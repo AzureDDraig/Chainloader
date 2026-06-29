@@ -1958,6 +1958,25 @@ public class EventBridgeHelper {
         return tag;
     }
 
+    public static void patchRecipes(java.util.Map<?, ?> map) {
+        if (map == null) return;
+        for (java.util.Map.Entry<?, ?> entry : map.entrySet()) {
+            Object value = entry.getValue();
+            if (value instanceof com.google.gson.JsonObject) {
+                com.google.gson.JsonObject recipeObj = (com.google.gson.JsonObject) value;
+                if (recipeObj.has("result")) {
+                    com.google.gson.JsonElement resultElement = recipeObj.get("result");
+                    if (resultElement.isJsonObject()) {
+                        com.google.gson.JsonObject resultObj = resultElement.getAsJsonObject();
+                        if (resultObj.has("item") && !resultObj.has("id")) {
+                            resultObj.addProperty("id", resultObj.get("item").getAsString());
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     public static net.minecraft.world.level.biome.Biome.Precipitation getPrecipitation(Object biomeObj) {
         if (biomeObj instanceof net.minecraft.world.level.biome.Biome) {
             net.minecraft.world.level.biome.Biome biome = (net.minecraft.world.level.biome.Biome) biomeObj;
