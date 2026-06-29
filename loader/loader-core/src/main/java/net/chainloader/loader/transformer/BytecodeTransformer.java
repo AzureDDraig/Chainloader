@@ -828,6 +828,12 @@ public class BytecodeTransformer {
                     return mapped;
                 }
             }
+            if (name.startsWith("f_")) {
+                String mapped = SEARGE_FIELD_MAPPINGS.get(name);
+                if (mapped != null) {
+                    return mapped;
+                }
+            }
 
             String deobfOwner = getDeobfClassName(owner);
             String mojangKey = deobfOwner + "." + name;
