@@ -1,0 +1,5 @@
+package net.minecraft.world.item;
+
+public interface ItemLike {
+    Item asItem();
+}

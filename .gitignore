@@ -1,0 +1,52 @@
+# Gradle and Java build directories
+.gradle/
+build/
+bin/
+bin-scratch/
+bin-stubs/
+out/
+target/
+
+# Log files
+*.log
+*.txt
+!sources_manual.txt
+!sources_test.txt
+!stubs_manual.txt
+!stubs_test.txt
+!sources.txt
+!stubs.txt
+
+# OS/IDE files
+.DS_Store
+.idea/
+*.iml
+*.ipr
+*.iws
+.project
+.classpath
+.settings/
+.vscode/
+
+# Local dependencies and game runtime directories
+downloads/
+jdk21/
+lib/
+mods/
+natives/
+saves/
+resourcepacks/
+config/
+crash-reports/
+usercache.json
+options.txt
+logs/
+
+# Temporary/scratch files
+scratch/
+scratch_*
+temp_naturescompass/
+temp_waystones/
+*.class
+subagents.json
+transformed_*.class

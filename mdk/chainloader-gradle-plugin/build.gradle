@@ -1,0 +1,32 @@
+plugins {
+    id 'java-gradle-plugin'
+    id 'maven-publish'
+}
+
+group = 'net.chainloader.gradle'
+version = '1.0.0-SNAPSHOT'
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
+}
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    implementation gradleApi()
+}
+
+gradlePlugin {
+    plugins {
+        chainloaderPlugin {
+            id = 'net.chainloader.gradle'
+            implementationClass = 'net.chainloader.gradle.ChainLoaderGradlePlugin'
+            displayName = 'ChainLoader Gradle Plugin'
+            description = 'Gradle plugin for ChainLoader mod development environment setups.'
+        }
+    }
+}

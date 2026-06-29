@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "id": "${mod_id}",
+  "version": "${mod_version}",
+  "name": "${mod_name}",
+  "description": "${mod_description}",
+  "license": "MIT",
+  "authors": [
+    "ExampleAuthor"
+  ],
+  "contact": {
+    "homepage": "https://github.com/example/example-mod",
+    "sources": "https://github.com/example/example-mod"
+  },
+  "dependencies": {
+    "chainloader": ">=1.0.0"
+  },
+  "entrypoints": {
+    "main": [
+      "net.example.ExampleMod"
+    ]
+  }
+}

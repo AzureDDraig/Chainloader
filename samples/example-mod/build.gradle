@@ -1,0 +1,58 @@
+plugins {
+    id 'java-library'
+    id 'maven-publish'
+}
+
+group = 'net.example'
+version = '1.0.0-SNAPSHOT'
+
+java {
+    toolchain {
+        // Target Java 21 compatible with modern Minecraft versions (e.g. 1.20.5+)
+        languageVersion = JavaLanguageVersion.of(21)
+    }
+}
+
+repositories {
+    mavenCentral()
+    mavenLocal()
+    
+    // Fallback directory repository to resolve the local chainloader-api jar if needed
+    flatDir {
+        dirs '../../mdk/chainloader-api/build/libs', '../../mdk/chainloader-api'
+    }
+}
+
+dependencies {
+    // ChainLoader API dependency from the MDK.
+    // In a production setup, this would be a Maven coordinate (e.g., 'net.chainloader:chainloader-api:1.0.0-SNAPSHOT').
+    // Here we support both local project development and a file dependency fallback.
+    if (findProject(':mdk:chainloader-api') != null) {
+        implementation project(':mdk:chainloader-api')
+    } else {
+        implementation name: 'chainloader-api'
+    }
+
+    // Mock compile dependencies for Minecraft/Loader APIs used in the code.
+    // In an actual MDK workspace, these would be provided by the chainloader gradle plugin.
+    compileOnly 'org.ow2.asm:asm:9.6'
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = 'UTF-8'
+}
+
+// Automatically expand properties in the mod descriptor
+tasks.withType(ProcessResources).configureEach {
+    var replaceProperties = [
+            mod_id: 'example-mod',
+            mod_name: 'Example Mod',
+            mod_version: project.version,
+            mod_description: 'A sample mod demonstrating ChainLoader MDK features like custom block registration and event listening.'
+    ]
+    inputs.properties replaceProperties
+
+    filesMatching(['chainmod.json']) {
+        expand replaceProperties
+    }
+}

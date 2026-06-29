@@ -1,0 +1,5 @@
+rootProject.name = 'ChainLoader'
+include 'loader:loader-core'
+include 'loader:loader-compat-base'
+include 'loader:loader-compat-1.21.1'
+

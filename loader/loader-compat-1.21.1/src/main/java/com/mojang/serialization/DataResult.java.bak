@@ -1,0 +1,14 @@
+package com.mojang.serialization;
+
+import java.util.Optional;
+import java.util.function.Consumer;
+
+public class DataResult<T> {
+    public static class PartialResult<T> {
+        public String message() { return null; }
+    }
+    
+    public Optional<T> resultOrPartial(Consumer<String> onError) { return null; }
+    public Optional<T> result() { return null; }
+    public Optional<PartialResult<T>> error() { return null; }
+}

@@ -1,0 +1,27 @@
+plugins {
+    id 'java'
+}
+
+group = 'net.chainloader'
+version = '1.0.0-SNAPSHOT'
+
+dependencies {
+    implementation project(':loader:loader-compat-base')
+
+    // ASM library for future class transformations
+    implementation 'org.ow2.asm:asm:9.6'
+    implementation 'org.ow2.asm:asm-commons:9.6'
+    implementation 'org.ow2.asm:asm-tree:9.6'
+
+    testImplementation 'org.junit.jupiter:junit-jupiter:5.10.0'
+}
+
+test {
+    useJUnitPlatform()
+}
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
+}
