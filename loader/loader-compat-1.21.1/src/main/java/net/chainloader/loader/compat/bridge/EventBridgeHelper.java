@@ -583,7 +583,7 @@ public class EventBridgeHelper {
                 java.lang.reflect.Method registryOrThrowMethod = null;
                 for (String methodNameOpt : new String[]{"registryOrThrow", "d"}) {
                     try {
-                        registryOrThrowMethod = registryAccess.getClass().getMethod(methodNameOpt, enchRegistryKey.getClass().getInterfaces()[0].getClass().equals(Class.class) ? Class.class : enchRegistryKey.getClass());
+                        registryOrThrowMethod = registryAccess.getClass().getMethod(methodNameOpt, enchRegistryKey.getClass());
                         break;
                     } catch (NoSuchMethodException e) {
                         // ignore
@@ -607,7 +607,7 @@ public class EventBridgeHelper {
                 java.lang.reflect.Method getMethod = null;
                 for (String getOpt : new String[]{"get", "a"}) {
                     try {
-                        getMethod = registry.getClass().getMethod(getOpt, resourceKeyObj.getClass().getInterfaces()[0].getClass().equals(Class.class) ? Class.class : resourceKeyObj.getClass());
+                        getMethod = registry.getClass().getMethod(getOpt, resourceKeyObj.getClass());
                         break;
                     } catch (NoSuchMethodException e) {
                         // ignore

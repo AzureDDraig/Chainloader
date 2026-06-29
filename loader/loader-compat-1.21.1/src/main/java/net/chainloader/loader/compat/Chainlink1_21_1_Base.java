@@ -629,6 +629,8 @@ public abstract class Chainlink1_21_1_Base implements Chainlink {
             return transformPauseScreen(bytes);
         } else if ("net.minecraft.client.ClientBrandRetriever".equals(className)) {
             return transformClientBrandRetriever(bytes);
+        } else if (isClass(className, "net.minecraft.world.item.crafting.RecipeManager", "czd")) {
+            return transformRecipeManager(bytes);
         } else if ("fik".equals(className)) {
             return transformAbstractWidget(bytes);
         } else if ("fgs".equals(className)) {
@@ -942,6 +944,38 @@ public abstract class Chainlink1_21_1_Base implements Chainlink {
                                         false);
                                 }
                                 super.visitInsn(opcode);
+                            }
+                        };
+                    }
+                    return mv;
+                }
+            };
+            cr.accept(cv, 0);
+            return cw.toByteArray();
+        } catch (Exception e) {
+            e.printStackTrace();
+            return bytes;
+        }
+    }
+
+    private byte[] transformRecipeManager(byte[] bytes) {
+        try {
+            ClassReader cr = new ClassReader(bytes);
+            ClassWriter cw = new ClassWriter(cr, ClassWriter.COMPUTE_MAXS);
+            ClassVisitor cv = new ClassVisitor(Opcodes.ASM9, cw) {
+                @Override
+                public MethodVisitor visitMethod(int access, String name, String descriptor, String signature, String[] exceptions) {
+                    MethodVisitor mv = super.visitMethod(access, name, descriptor, signature, exceptions);
+                    boolean isApply = ("apply".equals(name) || "a".equals(name)) &&
+                            ("(Ljava/util/Map;Lnet/minecraft/server/packs/resources/ResourceManager;Lnet/minecraft/util/profiling/ProfilerFiller;)V".equals(descriptor) ||
+                             "(Ljava/util/Map;Laue;Lbnf;)V".equals(descriptor));
+                    if (isApply) {
+                        return new MethodVisitor(Opcodes.ASM9, mv) {
+                            @Override
+                            public void visitCode() {
+                                super.visitCode();
+                                visitVarInsn(Opcodes.ALOAD, 1);
+                                visitMethodInsn(Opcodes.INVOKESTATIC, "net/chainloader/loader/compat/bridge/EventBridgeHelper", "patchRecipes", "(Ljava/util/Map;)V", false);
                             }
                         };
                     }
