@@ -221,9 +221,10 @@ public abstract class Chainlink1_21_1_Base implements Chainlink {
             if (name.equals("keySet")) return "a";
             if (name.equals("getLevel")) return "a";
         }
-        if (isClass(owner, "net/minecraft/core/Holder", "jm")) {
-            if (name.equals("value")) return "a";
-        }
+         if (isClass(owner, "net/minecraft/core/Holder", "jm") || isClass(owner, "net/minecraft/core/Holder$Reference", "jm$c")) {
+             if (name.equals("value")) return "a";
+             if (name.equals("getTagKeys") || name.equals("tags")) return "c";
+         }
         if (isClass(owner, "net/minecraft/nbt/CompoundTag", "ub")) {
             if (name.equals("put")) return "a";
             if (name.equals("contains")) return descriptor.endsWith("I)Z") ? "b" : "e";
