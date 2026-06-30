@@ -1,7 +1,9 @@
 package net.minecraft.core;
 
-public class BlockPos {
-    public int getX() { return 0; }
-    public int getY() { return 0; }
-    public int getZ() { return 0; }
+public class BlockPos extends Vec3i {
+    public static final BlockPos ZERO = new BlockPos(0, 0, 0);
+
+    public BlockPos(int x, int y, int z) {
+        super(x, y, z);
+    }
 }

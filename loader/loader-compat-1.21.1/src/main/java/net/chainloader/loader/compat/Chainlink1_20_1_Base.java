@@ -48,6 +48,14 @@ public abstract class Chainlink1_20_1_Base extends Chainlink1_21_1_Base {
     }
 
     @Override
+    public String mapClass(String className) {
+        if ("qj".equals(className)) {
+            return "net/minecraft/resources/ResourceKey";
+        }
+        return super.mapClass(className);
+    }
+
+    @Override
     public byte[] transform(String className, byte[] bytes) {
         if (className == null || bytes == null || bytes.length == 0) {
             return bytes;

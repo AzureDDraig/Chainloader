@@ -9,4 +9,8 @@ public class MenuType<T extends AbstractContainerMenu> {
     }
 
     public MenuType(MenuSupplier<T> supplier, FeatureFlagSet features) {}
+
+    public T create(int syncId, Inventory inventory) {
+        return null;
+    }
 }

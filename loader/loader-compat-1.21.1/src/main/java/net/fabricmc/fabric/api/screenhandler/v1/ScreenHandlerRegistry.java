@@ -11,10 +11,28 @@ public final class ScreenHandlerRegistry {
         T create(int syncId, net.minecraft.world.entity.player.Inventory inventory, net.minecraft.network.FriendlyByteBuf buf);
     }
 
+    public static class ExtendedMenuType<T extends AbstractContainerMenu> extends MenuType<T> {
+        private final ExtendedClientHandlerFactory<T> factory;
+
+        public ExtendedMenuType(ExtendedClientHandlerFactory<T> factory) {
+            super((syncId, inventory) -> null, null);
+            this.factory = factory;
+        }
+
+        @Override
+        public T create(int syncId, net.minecraft.world.entity.player.Inventory inventory) {
+            net.minecraft.network.FriendlyByteBuf buf = net.chainloader.loader.compat.bridge.EventBridgeHelper.getAndRemoveClientBuffer(syncId);
+            if (buf != null) {
+                return factory.create(syncId, inventory, buf);
+            }
+            return null;
+        }
+    }
+
     public static <T extends AbstractContainerMenu> MenuType<T> registerExtended(
             ResourceLocation id, ExtendedClientHandlerFactory<T> factory) {
         
-        MenuType<T> type = new MenuType<>((syncId, inventory) -> null, null);
+        MenuType<T> type = new ExtendedMenuType<>(factory);
         try {
             Class<?> registryClass = Class.forName("net.minecraft.core.Registry");
             Class<?> registriesClass = Class.forName("net.minecraft.core.registries.BuiltInRegistries");

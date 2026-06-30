@@ -10,12 +10,6 @@ target/
 # Log files
 *.log
 *.txt
-!sources_manual.txt
-!sources_test.txt
-!stubs_manual.txt
-!stubs_test.txt
-!sources.txt
-!stubs.txt
 
 # OS/IDE files
 .DS_Store
@@ -50,3 +44,6 @@ temp_waystones/
 *.class
 subagents.json
 transformed_*.class
+
+# Agent / AI files
+.agents/

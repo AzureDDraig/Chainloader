@@ -93,11 +93,16 @@ public class AccessWidener {
     public AccessWidener() {
         // Programmatic default rules
         addClassRule("bsr", AccessType.ACCESSIBLE);
-        addFieldRule("bsr", "r", "Ldcw;", AccessType.ACCESSIBLE);
-        addFieldRule("bsr", "r", "Ldcw;", AccessType.MUTABLE);
+        addFieldRule("bsr", "r", "*", AccessType.ACCESSIBLE);
+        addFieldRule("bsr", "r", "*", AccessType.MUTABLE);
         addClassRule("cmu", AccessType.ACCESSIBLE);
-        addFieldRule("cmu", "d", "Z", AccessType.ACCESSIBLE);
-        addFieldRule("cmu", "d", "Z", AccessType.MUTABLE);
+        addFieldRule("cmu", "d", "*", AccessType.ACCESSIBLE);
+        addFieldRule("cmu", "d", "*", AccessType.MUTABLE);
+
+        // CreativeModeTabs.TABS (ctb.j) for Nature's Compass creative tab insertion
+        addClassRule("ctb", AccessType.ACCESSIBLE);
+        addFieldRule("ctb", "j", "*", AccessType.ACCESSIBLE);
+        addFieldRule("ctb", "j", "*", AccessType.MUTABLE);
     }
 
     /**
@@ -299,6 +304,9 @@ public class AccessWidener {
         public FieldVisitor visitField(int access, String name, String descriptor, String signature, Object value) {
             EntryKey key = new EntryKey(currentClassName, name, descriptor);
             Set<AccessType> rules = fieldAccess.get(key);
+            if (rules == null) {
+                rules = fieldAccess.get(new EntryKey(currentClassName, name, "*"));
+            }
             if (rules != null) {
                 access = widenFieldAccess(access, rules);
             }
@@ -309,6 +317,9 @@ public class AccessWidener {
         public MethodVisitor visitMethod(int access, String name, String descriptor, String signature, String[] exceptions) {
             EntryKey key = new EntryKey(currentClassName, name, descriptor);
             Set<AccessType> rules = methodAccess.get(key);
+            if (rules == null) {
+                rules = methodAccess.get(new EntryKey(currentClassName, name, "*"));
+            }
             if (rules != null) {
                 access = widenMethodAccess(name, access, rules);
             }

@@ -115,7 +115,10 @@ public class ChainLauncher {
 
             // Wake up matching Chainlinks based on discovered mods
             List<ModScanner.DiscoveredMod> mods = ModScanner.getDiscoveredMods();
+            int totalLinks = availableLinks.size();
+            int linkIndex = 0;
             for (Chainlink link : availableLinks) {
+                linkIndex++;
                 boolean shouldWakeUp = false;
                 
                 if (link.getSupportedLoaderType().equalsIgnoreCase("chainloader") ||
@@ -140,7 +143,14 @@ public class ChainLauncher {
                 }
                 
                 if (shouldWakeUp) {
-                    loadingScreen.log("[ChainLoader] Waking up compat module " + link.getClass().getSimpleName() + "...");
+                    String compatName = link.getClass().getSimpleName();
+                    String loaderType = link.getSupportedLoaderType();
+                    String versionRange = link.getSupportedVersionRange();
+                    int progressStep = 70 + (int) ((double) linkIndex / Math.max(1, totalLinks) * 5.0);
+                    
+                    loadingScreen.updateProgress(progressStep, "Loading compatibility layer: " + compatName + " (" + loaderType + " " + versionRange + ")...");
+                    loadingScreen.log("Bootstrap", "Waking up compatibility module " + compatName + "...");
+                    
                     link.onWakeUp(classLoader);
                     activeLinks.add(link);
                 }

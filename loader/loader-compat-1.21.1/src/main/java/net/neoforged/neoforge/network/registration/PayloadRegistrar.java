@@ -20,4 +20,12 @@ public class PayloadRegistrar {
     ) {
         return this;
     }
+
+    public <T extends CustomPacketPayload> PayloadRegistrar playBidirectional(
+        CustomPacketPayload.Type<T> type,
+        StreamCodec<?, T> codec,
+        IPayloadHandler<T> handler
+    ) {
+        return this;
+    }
 }

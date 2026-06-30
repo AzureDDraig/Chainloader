@@ -7,7 +7,7 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 
-public class FabricItemGroupEntriesWrapper implements FabricItemGroupEntries {
+public class FabricItemGroupEntriesWrapper extends FabricItemGroupEntries {
     public static class Entry {
         public final ItemStack stack;
         public final CreativeModeTab.TabVisibility visibility;

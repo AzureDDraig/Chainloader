@@ -282,6 +282,9 @@ public class AccessWidenerCompiler {
                 Map<String, AccessType> fields = compiledFields.get(classInternalName);
                 if (fields != null) {
                     AccessType type = fields.get(name + ":" + descriptor);
+                    if (type == null) {
+                        type = fields.get(name + ":*");
+                    }
                     if (type != null) {
                         if (type == AccessType.ACCESSIBLE || type == AccessType.MUTABLE) {
                             access &= ~(Opcodes.ACC_PRIVATE | Opcodes.ACC_PROTECTED);
@@ -307,6 +310,9 @@ public class AccessWidenerCompiler {
                 Map<String, AccessType> methods = compiledMethods.get(classInternalName);
                 if (methods != null) {
                     AccessType type = methods.get(name + ":" + descriptor);
+                    if (type == null) {
+                        type = methods.get(name + ":*");
+                    }
                     if (type != null) {
                         if (type == AccessType.EXTENDABLE) {
                             access &= ~Opcodes.ACC_FINAL;

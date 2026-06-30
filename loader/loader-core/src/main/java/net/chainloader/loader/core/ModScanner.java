@@ -71,7 +71,12 @@ public final class ModScanner {
     }
 
     private static final List<DiscoveredMod> DISCOVERED_MODS = new ArrayList<>();
+    private static final java.util.Set<String> discoveredPacketChannels = new java.util.concurrent.ConcurrentHashMap<String, Boolean>().keySet(true);
     private static boolean initialized = false;
+
+    public static java.util.Set<String> getDiscoveredPacketChannels() {
+        return discoveredPacketChannels;
+    }
 
     static {
         // Register ChainLoader Core
@@ -142,6 +147,7 @@ public final class ModScanner {
             // Scan classes for Forge/NeoForge @Mod and @EventBusSubscriber annotations
             String modClass = null;
             List<TempSubscriber> tempSubscribers = new ArrayList<>();
+            java.util.Set<String> modStrings = new java.util.HashSet<>();
             Enumeration<? extends ZipEntry> entries = zipFile.entries();
             int scannedClassesCount = 0;
             while (entries.hasMoreElements()) {
@@ -160,6 +166,7 @@ public final class ModScanner {
                             Logging.debug("Scanning", "  Found @Mod class: %s", foundClass);
                             modClass = foundClass;
                         }
+                        scanClassStringConstants(cr, modStrings);
                     } catch (Exception e) {
                         // Skip corrupted/unreadable classes
                     }
@@ -238,6 +245,25 @@ public final class ModScanner {
                             metadata.getOriginalLoaderType(), realModClass);
 
                     String resolvedModId = metadata.getId();
+                    
+                    // Register potential packet channels for this mod
+                    for (String s : modStrings) {
+                        if (s.contains(":") && s.length() < 128) {
+                            int colonIdx = s.indexOf(':');
+                            if (colonIdx > 0 && colonIdx < s.length() - 1) {
+                                String namespace = s.substring(0, colonIdx);
+                                String path = s.substring(colonIdx + 1);
+                                if (namespace.matches("^[a-z0-9_.-]+$") && path.matches("^[a-z0-9_.-/]+$")) {
+                                    if (!namespace.equals("minecraft") && !namespace.equals("neoforge") && 
+                                        !namespace.equals("forge") && !namespace.equals("fabric") && !namespace.equals("c")) {
+                                        Logging.debug("Scanning", "  Discovered potential packet channel: %s", s);
+                                        discoveredPacketChannels.add(s);
+                                    }
+                                }
+                            }
+                        }
+                    }
+
                     for (TempSubscriber temp : tempSubscribers) {
                         String modId = temp.modIdField.isEmpty() ? resolvedModId : temp.modIdField;
                         synchronized (EVENT_SUBSCRIBERS) {
@@ -577,6 +603,32 @@ public final class ModScanner {
             Logging.error("    Failed to register " + clazz.getName() + " to bus " + bus.getClass().getName(), t);
             net.chainloader.loader.core.gui.EarlyLoadingScreen.getInstance().logError(modId, "Failed to register " + clazz.getName() + " to bus " + bus.getClass().getName(), t);
         }
+    }
+
+    private static void scanClassStringConstants(ClassReader cr, java.util.Set<String> constants) {
+        cr.accept(new org.objectweb.asm.ClassVisitor(org.objectweb.asm.Opcodes.ASM9) {
+            @Override
+            public org.objectweb.asm.FieldVisitor visitField(int access, String name, String descriptor, String signature, Object value) {
+                if (value instanceof String) {
+                    constants.add((String) value);
+                }
+                return null;
+            }
+            
+            @Override
+            public org.objectweb.asm.MethodVisitor visitMethod(int access, String name, String descriptor, String signature, String[] exceptions) {
+                org.objectweb.asm.MethodVisitor mv = super.visitMethod(access, name, descriptor, signature, exceptions);
+                return new org.objectweb.asm.MethodVisitor(org.objectweb.asm.Opcodes.ASM9, mv) {
+                    @Override
+                    public void visitLdcInsn(Object value) {
+                        if (value instanceof String) {
+                            constants.add((String) value);
+                        }
+                        super.visitLdcInsn(value);
+                    }
+                };
+            }
+        }, ClassReader.SKIP_DEBUG | ClassReader.SKIP_FRAMES);
     }
 }
 

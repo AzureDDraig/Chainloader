@@ -9,6 +9,10 @@ public class Biome {
         return 0.0f;
     }
 
+    public float getTemperature(net.minecraft.core.BlockPos pos) {
+        return 0.0f;
+    }
+
     public enum Precipitation {
         NONE,
         RAIN,

@@ -14,7 +14,7 @@ public class Chainlink1_21_1_NeoForge extends Chainlink1_21_1_Base {
 
     @Override
     public void onWakeUp(ClassLoader classLoader) {
-        System.out.println("[Chainlink 1.21.1 NeoForge] Initializing main platform module...");
+        net.chainloader.loader.core.gui.EarlyLoadingScreen.getInstance().log("NeoForgeCompat", "Initializing 1.21.1 NeoForge compatibility layer...");
         super.onWakeUp(classLoader);
 
         // Scan registered mods for backwards compatibility modules matching other Minecraft versions
@@ -53,7 +53,7 @@ public class Chainlink1_21_1_NeoForge extends Chainlink1_21_1_Base {
             }
         }
         if (match && !instantiatedClasses.contains(className)) {
-            System.out.println("[Chainlink 1.21.1 NeoForge] Mod version match detected. Dynamically instantiating backwards compat module: " + className);
+            net.chainloader.loader.core.gui.EarlyLoadingScreen.getInstance().log("NeoForgeCompat", "Detected mod version match for range " + range + ". Loading dynamic subloader: " + className);
             try {
                 Class<?> adapterClass = Class.forName(className, true, classLoader);
                 Chainlink linkInstance = (Chainlink) adapterClass.getDeclaredConstructor().newInstance();

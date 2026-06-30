@@ -85,6 +85,10 @@ public class BytecodeTransformer {
 
     public void addMojangMethodMapping(String key, String value) {
         MOJANG_METHOD_MAPPINGS.put(key, value);
+        int parenIdx = key.indexOf('(');
+        if (parenIdx != -1) {
+            MOJANG_METHOD_MAPPINGS.put(key.substring(0, parenIdx), value);
+        }
     }
 
     public void addMojangFieldMapping(String key, String value) {
@@ -157,6 +161,56 @@ public class BytecodeTransformer {
         boolean isCreativeModeTab = "cta".equals(className) || "cta$a".equals(className) || 
                                     "net.minecraft.world.item.CreativeModeTab".equals(className) || 
                                     "net.minecraft.world.item.CreativeModeTab$Builder".equals(className);
+        boolean isCustomPacketPayload1 = "aaj$1".equals(className) || 
+                                          "net.minecraft.network.protocol.common.custom.CustomPacketPayload$1".equals(className);
+        
+        if (isCustomPacketPayload1) {
+            try {
+                System.out.println("[ChainLoader] Transforming CustomPacketPayload$1 constructor to register map and remove final modifier...");
+                ClassReader cr = new ClassReader(classBytes);
+                ClassWriter cw = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+                cr.accept(new org.objectweb.asm.ClassVisitor(Opcodes.ASM9, cw) {
+                    @Override
+                    public org.objectweb.asm.FieldVisitor visitField(int access, String name, String descriptor, String signature, Object value) {
+                        if ("a".equals(name) || "field_50761".equals(name)) {
+                            access &= ~Opcodes.ACC_FINAL;
+                        }
+                        return super.visitField(access, name, descriptor, signature, value);
+                    }
+
+                    @Override
+                    public org.objectweb.asm.MethodVisitor visitMethod(int access, String name, String descriptor, String signature, String[] exceptions) {
+                        org.objectweb.asm.MethodVisitor mv = super.visitMethod(access, name, descriptor, signature, exceptions);
+                        if ("<init>".equals(name)) {
+                            return new org.objectweb.asm.MethodVisitor(Opcodes.ASM9, mv) {
+                                @Override
+                                public void visitInsn(int opcode) {
+                                    if (opcode == Opcodes.RETURN) {
+                                        super.visitVarInsn(Opcodes.ALOAD, 0);
+                                        super.visitVarInsn(Opcodes.ALOAD, 1);
+                                        super.visitMethodInsn(
+                                            Opcodes.INVOKESTATIC,
+                                            "net/chainloader/loader/compat/bridge/EventBridgeHelper",
+                                            "registerCustomPacketPayloadCodecInstance",
+                                            "(Ljava/lang/Object;Ljava/util/Map;)V",
+                                            false
+                                        );
+                                    }
+                                    super.visitInsn(opcode);
+                                }
+                            };
+                        }
+                        return mv;
+                    }
+                }, 0);
+                return cw.toByteArray();
+            } catch (Throwable t) {
+                System.err.println("[ChainLoader] Failed to transform CustomPacketPayload$1:");
+                t.printStackTrace();
+            }
+            return classBytes;
+        }
+
         if (!isCreativeModeTab) {
             if (className.indexOf('.') == -1 || className.startsWith("net.minecraft.") || className.startsWith("com.mojang.")) {
                 return classBytes;
@@ -175,7 +229,165 @@ public class BytecodeTransformer {
             ClassWriter classWriter = new ClassWriter(ClassWriter.COMPUTE_MAXS);
             
             ChainRemapper remapper = new ChainRemapper();
-            ClassRemapper classRemapper = new ClassRemapper(classWriter, remapper);
+            SavedDataBridgeVisitor bridgeVisitor = new SavedDataBridgeVisitor(Opcodes.ASM9, classWriter, remapper);
+            org.objectweb.asm.ClassVisitor redirectVisitor = new org.objectweb.asm.ClassVisitor(Opcodes.ASM9, bridgeVisitor) {
+                @Override
+                public org.objectweb.asm.MethodVisitor visitMethod(int access, String methodName, String methodDesc, String signature, String[] exceptions) {
+                    org.objectweb.asm.MethodVisitor mv = super.visitMethod(access, methodName, methodDesc, signature, exceptions);
+                    return new org.objectweb.asm.MethodVisitor(Opcodes.ASM9, mv) {
+                        @Override
+                        public void visitMethodInsn(int opcode, String owner, String name, String desc, boolean isInterface) {
+                            boolean isFont = "net/minecraft/client/gui/Font".equals(owner) || "fhx".equals(owner);
+                            boolean isDrawInBatch = "drawInBatch".equals(name) || "m_92889_".equals(name);
+                            boolean hasOldSig = desc != null && (desc.contains("PoseStack") || desc.contains("fbi"));
+                            
+                            if (opcode == Opcodes.INVOKEVIRTUAL && isFont && isDrawInBatch && hasOldSig) {
+                                boolean isComponent = desc.contains("Component") || desc.contains("Lwz;");
+                                if (isComponent) {
+                                    super.visitMethodInsn(
+                                        Opcodes.INVOKESTATIC,
+                                        "net/chainloader/loader/compat/bridge/EventBridgeHelper",
+                                        "drawInBatchComponentBridge",
+                                        remapper.mapDesc("(Lnet/minecraft/client/gui/Font;Lcom/mojang/blaze3d/vertex/PoseStack;Lnet/minecraft/network/chat/Component;FFI)I"),
+                                        false
+                                    );
+                                } else {
+                                    super.visitMethodInsn(
+                                        Opcodes.INVOKESTATIC,
+                                        "net/chainloader/loader/compat/bridge/EventBridgeHelper",
+                                        "drawInBatchBridge",
+                                        remapper.mapDesc("(Lnet/minecraft/client/gui/Font;Lcom/mojang/blaze3d/vertex/PoseStack;Lnet/minecraft/util/FormattedCharSequence;FFI)I"),
+                                        false
+                                    );
+                                }
+                                return;
+                            }
+
+                            boolean isNbtUtils = "net/minecraft/nbt/NbtUtils".equals(owner) || "uq".equals(owner);
+                            boolean isReadBlockPos = "readBlockPos".equals(name) || "a".equals(name);
+                            boolean hasOldNbtSig = desc != null && (desc.contains("CompoundTag") || desc.contains("Lub;")) && (desc.endsWith("BlockPos;") || desc.endsWith("Ljd;"));
+
+                            if (opcode == Opcodes.INVOKESTATIC && isNbtUtils && isReadBlockPos && hasOldNbtSig) {
+                                super.visitMethodInsn(
+                                    Opcodes.INVOKESTATIC,
+                                    "net/chainloader/loader/compat/bridge/EventBridgeHelper",
+                                    "readBlockPosBridge",
+                                    remapper.mapDesc("(Lnet/minecraft/nbt/CompoundTag;)Lnet/minecraft/core/BlockPos;"),
+                                    false
+                                );
+                                return;
+                            }
+                            if ("enqueueWork".equals(name) && desc != null && desc.equals("(Ljava/lang/Runnable;)Ljava/util/concurrent/CompletableFuture;") && 
+                                (owner.startsWith("net/neoforged/fml/event/") || owner.startsWith("net/minecraftforge/fml/event/"))) {
+                                super.visitMethodInsn(
+                                    Opcodes.INVOKESTATIC,
+                                    "net/chainloader/loader/compat/bridge/EventBridgeHelper",
+                                    "enqueueWorkBridge",
+                                    "(Ljava/lang/Object;Ljava/lang/Runnable;)Ljava/util/concurrent/CompletableFuture;",
+                                    false
+                                );
+                                return;
+                            }
+
+                            if ("getCapability".equals(name) && desc != null && desc.contains("net/minecraftforge/common/capabilities/Capability") && desc.endsWith("LazyOptional;")) {
+                                super.visitMethodInsn(
+                                    Opcodes.INVOKESTATIC,
+                                    "net/chainloader/loader/compat/bridge/EventBridgeHelper",
+                                    "getCapabilityBridge",
+                                    "(Ljava/lang/Object;Ljava/lang/Object;Ljava/lang/Object;)Lnet/minecraftforge/common/util/LazyOptional;",
+                                    false
+                                );
+                                return;
+                            }
+
+                            boolean isWriteBlockPos = "writeBlockPos".equals(name) || "a".equals(name);
+                            boolean hasOldWriteSig = desc != null && (desc.contains("BlockPos") || desc.contains("Ljd;")) && (desc.endsWith("CompoundTag;") || desc.endsWith("Lub;"));
+
+                            if (opcode == Opcodes.INVOKESTATIC && isNbtUtils && isWriteBlockPos && hasOldWriteSig) {
+                                super.visitMethodInsn(
+                                    Opcodes.INVOKESTATIC,
+                                    "net/chainloader/loader/compat/bridge/EventBridgeHelper",
+                                    "writeBlockPosBridge",
+                                    remapper.mapDesc("(Lnet/minecraft/core/BlockPos;)Lnet/minecraft/nbt/CompoundTag;"),
+                                    false
+                                );
+                                return;
+                            }
+
+                            boolean isBiome = "net/minecraft/world/level/biome/Biome".equals(owner) || "ddw".equals(owner);
+                            boolean isGetDownfall = "getDownfall".equals(name) || "m_47548_".equals(name);
+                            if (opcode == Opcodes.INVOKEVIRTUAL && isBiome && isGetDownfall) {
+                                String mappedName = remapper.mapMethodName(owner, "m_47554_", "()F");
+                                super.visitMethodInsn(opcode, owner, mappedName, "()F", isInterface);
+                                return;
+                            }
+
+                            boolean isGetPrecipitation = "getPrecipitation".equals(name) || "m_47530_".equals(name);
+                            if (opcode == Opcodes.INVOKEVIRTUAL && isBiome && isGetPrecipitation) {
+                                super.visitMethodInsn(
+                                    Opcodes.INVOKESTATIC,
+                                    "net/chainloader/loader/compat/bridge/EventBridgeHelper",
+                                    "getPrecipitationBridge",
+                                    remapper.mapDesc("(Ljava/lang/Object;)Lnet/minecraft/world/level/biome/Biome$Precipitation;"),
+                                    false
+                                );
+                                return;
+                            }
+
+                            boolean isHasHumidity = "hasHumidity".equals(name) || "m_47533_".equals(name);
+                            if (opcode == Opcodes.INVOKEVIRTUAL && isBiome && isHasHumidity) {
+                                super.visitMethodInsn(
+                                    Opcodes.INVOKESTATIC,
+                                    "net/chainloader/loader/compat/bridge/EventBridgeHelper",
+                                    "hasHumidityBridge",
+                                    "(Ljava/lang/Object;)Z",
+                                    false
+                                );
+                                return;
+                            }
+                             
+                             boolean isServerLevel = "net/minecraft/server/level/ServerLevel".equals(owner) || "aqu".equals(owner) || "net/minecraft/class_3218".equals(owner);
+                             boolean isGetChunkSource = "getChunkSource".equals(name) || "i".equals(name) || "method_14178".equals(name);
+                             if (opcode == Opcodes.INVOKEVIRTUAL && isServerLevel && isGetChunkSource) {
+                                 String mappedName = remapper.mapMethodName("net/minecraft/class_3218", "method_14178", "()Lnet/minecraft/class_3215;");
+                                 String mappedDesc = remapper.mapDesc("()Lnet/minecraft/class_3215;");
+                                 super.visitMethodInsn(opcode, owner, mappedName, mappedDesc, isInterface);
+                                 return;
+                             }
+
+                             boolean isPlayer = "net/minecraft/world/entity/player/Player".equals(owner) || "net/minecraft/class_1657".equals(owner) || "geb".equals(owner) ||
+                                                "net/minecraft/server/level/ServerPlayer".equals(owner) || "net/minecraft/class_3222".equals(owner) || "aqv".equals(owner);
+                             
+                             boolean isGetServerLevel = "m_9236_".equals(name) || "getLevel".equals(name) || "dO".equals(name) || "level".equals(name);
+                             if (opcode == Opcodes.INVOKEVIRTUAL && isPlayer && isGetServerLevel) {
+                                 super.visitMethodInsn(
+                                     Opcodes.INVOKESTATIC,
+                                     "net/chainloader/loader/compat/bridge/EventBridgeHelper",
+                                     "getServerLevelBridge",
+                                     remapper.mapDesc("(Ljava/lang/Object;)Lnet/minecraft/server/level/ServerLevel;"),
+                                     false
+                                 );
+                                 return;
+                             }
+
+                             boolean isOpenMenu = "openMenu".equals(name) || "method_17355".equals(name);
+                             if (opcode == Opcodes.INVOKEVIRTUAL && isPlayer && isOpenMenu) {
+                                 super.visitMethodInsn(
+                                     Opcodes.INVOKESTATIC,
+                                     "net/chainloader/loader/compat/bridge/EventBridgeHelper",
+                                     "openMenuBridge",
+                                     remapper.mapDesc("(Lnet/minecraft/world/entity/player/Player;Lnet/minecraft/world/MenuProvider;)Ljava/util/OptionalInt;"),
+                                     false
+                                 );
+                                 return;
+                             }
+
+                             super.visitMethodInsn(opcode, owner, name, desc, isInterface);
+                        }
+                    };
+                }
+            };
+            ClassRemapper classRemapper = new ClassRemapper(redirectVisitor, remapper);
             
             classReader.accept(classRemapper, ClassReader.EXPAND_FRAMES);
             return classWriter.toByteArray();
@@ -545,8 +757,11 @@ public class BytecodeTransformer {
                                 String returnTypeAndName = methodOrField.substring(0, parenIdx).trim();
                                 int lastSpaceIdx = returnTypeAndName.lastIndexOf(' ');
                                 String methodName = lastSpaceIdx != -1 ? returnTypeAndName.substring(lastSpaceIdx + 1) : returnTypeAndName;
+                                String returnType = lastSpaceIdx != -1 ? returnTypeAndName.substring(0, lastSpaceIdx).trim() : "void";
+                                String params = methodOrField.substring(parenIdx + 1, methodOrField.length() - 1).trim();
+                                String bytecodeDesc = toBytecodeDescriptor(returnType, params);
                                 
-                                String key = currentDeobfClass + "." + methodName;
+                                String key = currentDeobfClass + "." + methodName + bytecodeDesc;
                                 addMojangMethodMapping(key, obfPart);
                                 methodCount++;
                             } else {
@@ -658,11 +873,29 @@ public class BytecodeTransformer {
                                     String srgName = parts[2];
                                     addSeargeMethodMapping(srgName, obf);
                                     methodCount++;
+                                    if (parts.length >= 4) {
+                                        String numericId = parts[3];
+                                        try {
+                                            Integer.parseInt(numericId);
+                                            addSeargeMethodMapping("m_" + numericId + "_", obf);
+                                        } catch (NumberFormatException e) {
+                                            // ignore
+                                        }
+                                    }
                                 }
                             } else {
                                 String srgName = parts[1];
                                 addSeargeFieldMapping(srgName, obf);
                                 fieldCount++;
+                                if (parts.length >= 3) {
+                                    String numericId = parts[2];
+                                    try {
+                                        Integer.parseInt(numericId);
+                                        addSeargeFieldMapping("f_" + numericId + "_", obf);
+                                    } catch (NumberFormatException e) {
+                                        // ignore
+                                    }
+                                }
                             }
                         }
                     }
@@ -691,7 +924,8 @@ public class BytecodeTransformer {
                 return mappedName;
             }
 
-            String classResourceName = owner.replace('.', '/') + ".class";
+            String mappedOwner = map(owner);
+            String classResourceName = mappedOwner.replace('.', '/') + ".class";
             ClassLoader cl = activeClassLoader;
             if (cl == null) {
                 cl = Thread.currentThread().getContextClassLoader();
@@ -742,13 +976,18 @@ public class BytecodeTransformer {
             }
 
             String deobfOwner = getDeobfClassName(owner);
-            String mojangKey = deobfOwner + "." + name;
+            String mojangDesc = toMojangDescriptor(descriptor);
+            String mojangKey = deobfOwner + "." + name + mojangDesc;
             String mappedName = MOJANG_METHOD_MAPPINGS.get(mojangKey);
+            if (mappedName == null) {
+                mappedName = MOJANG_METHOD_MAPPINGS.get(deobfOwner + "." + name);
+            }
             if (mappedName != null) {
                 return mappedName;
             }
 
-            String classResourceName = owner.replace('.', '/') + ".class";
+            String mappedOwner = map(owner);
+            String classResourceName = mappedOwner.replace('.', '/') + ".class";
             ClassLoader cl = activeClassLoader;
             if (cl == null) {
                 cl = Thread.currentThread().getContextClassLoader();
@@ -836,8 +1075,12 @@ public class BytecodeTransformer {
             }
 
             String deobfOwner = getDeobfClassName(owner);
-            String mojangKey = deobfOwner + "." + name;
+            String mojangDesc = toMojangDescriptor(descriptor);
+            String mojangKey = deobfOwner + "." + name + mojangDesc;
             String mappedName = MOJANG_METHOD_MAPPINGS.get(mojangKey);
+            if (mappedName == null) {
+                mappedName = MOJANG_METHOD_MAPPINGS.get(deobfOwner + "." + name);
+            }
             if (mappedName != null) {
                 return mappedName;
             }
@@ -858,6 +1101,23 @@ public class BytecodeTransformer {
             }
 
             return super.mapMethodName(owner, name, descriptor);
+        }
+
+        @Override
+        public String mapInvokeDynamicMethodName(String name, String descriptor) {
+            if (name.startsWith("m_")) {
+                String mapped = SEARGE_METHOD_MAPPINGS.get(name);
+                if (mapped != null) {
+                    return mapped;
+                }
+            }
+            if (name.startsWith("method_")) {
+                String mapped = INTERMEDIARY_METHOD_MAPPINGS.get(name);
+                if (mapped != null) {
+                    return mapped;
+                }
+            }
+            return super.mapInvokeDynamicMethodName(name, descriptor);
         }
 
         @Override
@@ -1017,6 +1277,71 @@ public class BytecodeTransformer {
         }
     }
 
+    private static String toBytecodeType(String javaType) {
+        int arrayDepth = 0;
+        while (javaType.endsWith("[]")) {
+            arrayDepth++;
+            javaType = javaType.substring(0, javaType.length() - 2);
+        }
+        String baseDesc;
+        switch (javaType) {
+            case "int": baseDesc = "I"; break;
+            case "float": baseDesc = "F"; break;
+            case "double": baseDesc = "D"; break;
+            case "long": baseDesc = "J"; break;
+            case "boolean": baseDesc = "Z"; break;
+            case "char": baseDesc = "C"; break;
+            case "byte": baseDesc = "B"; break;
+            case "short": baseDesc = "S"; break;
+            case "void": baseDesc = "V"; break;
+            default:
+                baseDesc = "L" + javaType.replace('.', '/') + ";";
+                break;
+        }
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < arrayDepth; i++) {
+            sb.append('[');
+        }
+        sb.append(baseDesc);
+        return sb.toString();
+    }
+
+    private static String toBytecodeDescriptor(String returnType, String paramListStr) {
+        StringBuilder sb = new StringBuilder();
+        sb.append('(');
+        if (!paramListStr.isEmpty()) {
+            String[] params = paramListStr.split(",");
+            for (String param : params) {
+                sb.append(toBytecodeType(param.trim()));
+            }
+        }
+        sb.append(')');
+        sb.append(toBytecodeType(returnType.trim()));
+        return sb.toString();
+    }
+
+    private String toMojangDescriptor(String desc) {
+        if (desc == null) return null;
+        StringBuilder sb = new StringBuilder();
+        int i = 0;
+        while (i < desc.length()) {
+            char c = desc.charAt(i);
+            if (c == 'L') {
+                int semi = desc.indexOf(';', i);
+                if (semi != -1) {
+                    String className = desc.substring(i + 1, semi);
+                    String deobf = getDeobfClassName(className);
+                    sb.append('L').append(deobf).append(';');
+                    i = semi + 1;
+                    continue;
+                }
+            }
+            sb.append(c);
+            i++;
+        }
+        return sb.toString();
+    }
+
     private static class InterfaceCodecBridgeVisitor extends org.objectweb.asm.ClassVisitor {
         private final String className;
         private boolean isInterface;
@@ -1083,6 +1408,337 @@ public class BytecodeTransformer {
                 return null; // Skip abstract method body generation
             }
             return super.visitMethod(access, name, descriptor, signature, exceptions);
+        }
+    }
+
+    private static class SavedDataBridgeVisitor extends org.objectweb.asm.ClassVisitor {
+        private final Remapper remapper;
+        private final String blockEntityLoad1;
+        private final String blockEntitySave1;
+        private final String saveDataSave1;
+        
+        private String name;
+        private String superName;
+        private boolean hasLoad1 = false;
+        private boolean hasLoad2 = false;
+        private boolean hasSave1 = false;
+        private boolean hasSave2 = false;
+        private boolean hasSaveData1 = false;
+        private boolean hasSaveData2 = false;
+
+        public SavedDataBridgeVisitor(int api, org.objectweb.asm.ClassVisitor cv, Remapper remapper) {
+            super(api, cv);
+            this.remapper = remapper;
+            
+            String load1 = remapper.mapMethodName("net/minecraft/world/level/block/entity/BlockEntity", "load", "(Lnet/minecraft/nbt/CompoundTag;)V");
+            this.blockEntityLoad1 = (load1 != null && !load1.isEmpty()) ? load1 : "load";
+
+            String save1 = remapper.mapMethodName("net/minecraft/world/level/block/entity/BlockEntity", "saveAdditional", "(Lnet/minecraft/nbt/CompoundTag;)V");
+            this.blockEntitySave1 = (save1 != null && !save1.isEmpty()) ? save1 : "saveAdditional";
+
+            String dataSave1 = remapper.mapMethodName("net/minecraft/world/level/saveddata/SavedData", "save", "(Lnet/minecraft/nbt/CompoundTag;)Lnet/minecraft/nbt/CompoundTag;");
+            this.saveDataSave1 = (dataSave1 != null && !dataSave1.isEmpty()) ? dataSave1 : "save";
+        }
+
+        private static boolean isBlockEntitySubclass(String superName, Remapper remapper) {
+            if (superName == null) return false;
+            String targetBE = remapper.map("net/minecraft/world/level/block/entity/BlockEntity");
+            if (superName.equals("net/minecraft/world/level/block/entity/BlockEntity") || 
+                superName.equals("dqh") || 
+                (targetBE != null && superName.equals(targetBE))) {
+                return true;
+            }
+            try {
+                String path = superName.replace('.', '/') + ".class";
+                java.io.InputStream is = activeClassLoader.getResourceAsStream(path);
+                if (is != null) {
+                    try {
+                        ClassReader cr = new ClassReader(is);
+                        org.objectweb.asm.tree.ClassNode cn = new org.objectweb.asm.tree.ClassNode();
+                        cr.accept(cn, ClassReader.SKIP_CODE | ClassReader.SKIP_DEBUG | ClassReader.SKIP_FRAMES);
+                        return isBlockEntitySubclass(cn.superName, remapper);
+                    } finally {
+                        is.close();
+                    }
+                }
+            } catch (Throwable t) {
+                // Ignore
+            }
+            return false;
+        }
+
+        private static boolean isSavedDataSubclass(String superName, Remapper remapper) {
+            if (superName == null) return false;
+            String targetSD = remapper.map("net/minecraft/world/level/saveddata/SavedData");
+            if (superName.equals("net/minecraft/world/level/saveddata/SavedData") || 
+                superName.equals("eql") || 
+                superName.equals("dcv") || 
+                (targetSD != null && superName.equals(targetSD))) {
+                return true;
+            }
+            try {
+                String path = superName.replace('.', '/') + ".class";
+                java.io.InputStream is = activeClassLoader.getResourceAsStream(path);
+                if (is != null) {
+                    try {
+                        ClassReader cr = new ClassReader(is);
+                        org.objectweb.asm.tree.ClassNode cn = new org.objectweb.asm.tree.ClassNode();
+                        cr.accept(cn, ClassReader.SKIP_CODE | ClassReader.SKIP_DEBUG | ClassReader.SKIP_FRAMES);
+                        return isSavedDataSubclass(cn.superName, remapper);
+                    } finally {
+                        is.close();
+                    }
+                }
+            } catch (Throwable t) {
+                // Ignore
+            }
+            return false;
+        }
+
+        private static boolean superclassOverridesMethod(String superName, String methodName, String methodDesc, Remapper remapper) {
+            if (superName == null) return false;
+            if (superName.equals("net/minecraft/world/level/block/entity/BlockEntity") || 
+                superName.equals("net/minecraft/world/level/saveddata/SavedData") ||
+                superName.equals("dqh") || 
+                superName.equals("eql") || 
+                superName.equals("dcv") || 
+                superName.equals("java/lang/Object")) {
+                return false;
+            }
+            try {
+                String path = superName.replace('.', '/') + ".class";
+                java.io.InputStream is = activeClassLoader.getResourceAsStream(path);
+                if (is != null) {
+                    try {
+                        ClassReader cr = new ClassReader(is);
+                        org.objectweb.asm.tree.ClassNode cn = new org.objectweb.asm.tree.ClassNode();
+                        cr.accept(cn, ClassReader.SKIP_CODE | ClassReader.SKIP_DEBUG | ClassReader.SKIP_FRAMES);
+                        for (org.objectweb.asm.tree.MethodNode mn : cn.methods) {
+                            if (mn.name.equals(methodName) && mn.desc.equals(methodDesc)) {
+                                return true;
+                            }
+                        }
+                        return superclassOverridesMethod(cn.superName, methodName, methodDesc, remapper);
+                    } finally {
+                        is.close();
+                    }
+                }
+            } catch (Throwable t) {
+                // Ignore
+            }
+            return false;
+        }
+
+        @Override
+        public void visit(int version, int access, String name, String signature, String superName, String[] interfaces) {
+            this.name = name;
+            this.superName = superName;
+            super.visit(version, access, name, signature, superName, interfaces);
+        }
+
+        @Override
+        public org.objectweb.asm.MethodVisitor visitMethod(int access, String methodName, String descriptor, String signature, String[] exceptions) {
+            String targetTagClass = remapper.map("net/minecraft/nbt/CompoundTag");
+            String targetRegistriesClass = remapper.map("net/minecraft/core/HolderLookup$Provider");
+            if (targetTagClass != null && targetRegistriesClass != null) {
+                String tagDesc = "L" + targetTagClass + ";";
+                String regDesc = "L" + targetRegistriesClass + ";";
+
+                String desc1V = "(" + tagDesc + ")V";
+                String desc2V = "(" + tagDesc + regDesc + ")V";
+                String desc1R = "(" + tagDesc + ")" + tagDesc;
+                String desc2R = "(" + tagDesc + regDesc + ")" + tagDesc;
+
+                boolean isLoadName = methodName.equals("a") || methodName.equals("load") || methodName.equals("loadAdditional") || methodName.equals(blockEntityLoad1);
+                boolean isSaveName = methodName.equals("b") || methodName.equals("save") || methodName.equals("saveAdditional") || methodName.equals(blockEntitySave1);
+                boolean isSaveDataName = methodName.equals("a") || methodName.equals("save") || methodName.equals(saveDataSave1);
+
+                if (isLoadName && desc1V.equals(descriptor)) hasLoad1 = true;
+                if (isLoadName && desc2V.equals(descriptor)) hasLoad2 = true;
+                if (isSaveName && desc1V.equals(descriptor)) hasSave1 = true;
+                if (isSaveName && desc2V.equals(descriptor)) hasSave2 = true;
+                if (isSaveDataName && desc1R.equals(descriptor)) hasSaveData1 = true;
+                if (isSaveDataName && desc2R.equals(descriptor)) hasSaveData2 = true;
+
+                boolean isLoad = isLoadName && desc1V.equals(descriptor);
+                boolean isSaveAdditional = isSaveName && desc1V.equals(descriptor);
+                boolean isSaveData = isSaveDataName && desc1R.equals(descriptor);
+
+                if ((isLoad || isSaveAdditional || isSaveData) && (isBlockEntitySubclass(superName, remapper) || isSavedDataSubclass(superName, remapper))) {
+                    org.objectweb.asm.MethodVisitor mv = super.visitMethod(access, methodName, descriptor, signature, exceptions);
+                    final boolean isLoadFinal = isLoad;
+                    final boolean isSaveAdditionalFinal = isSaveAdditional;
+                    final boolean isSaveDataFinal = isSaveData;
+                    
+                    return new org.objectweb.asm.MethodVisitor(org.objectweb.asm.Opcodes.ASM9, mv) {
+                        @Override
+                        public void visitMethodInsn(int opcode, String owner, String name, String descriptor, boolean isInterface) {
+                            if (opcode == org.objectweb.asm.Opcodes.INVOKESPECIAL && !owner.equals(SavedDataBridgeVisitor.this.name)) {
+                                if (isLoadFinal && name.equals(blockEntityLoad1) && descriptor.equals(desc1V)) {
+                                    if (!superclassOverridesMethod(owner, blockEntityLoad1, desc1V, remapper)) {
+                                        super.visitMethodInsn(org.objectweb.asm.Opcodes.INVOKESTATIC, "net/chainloader/loader/compat/bridge/EventBridgeHelper", "getCurrentNbtProvider", "()Ljava/lang/Object;", false);
+                                        super.visitTypeInsn(org.objectweb.asm.Opcodes.CHECKCAST, targetRegistriesClass);
+                                        String realLoadName = remapper.mapMethodName("net/minecraft/world/level/block/entity/BlockEntity", "loadAdditional", "(Lnet/minecraft/nbt/CompoundTag;Lnet/minecraft/core/HolderLookup$Provider;)V");
+                                        if (realLoadName == null || realLoadName.isEmpty()) realLoadName = "loadAdditional";
+                                        super.visitMethodInsn(org.objectweb.asm.Opcodes.INVOKESPECIAL, owner, realLoadName, desc2V, isInterface);
+                                        return;
+                                    }
+                                } else if (isSaveAdditionalFinal && name.equals(blockEntitySave1) && descriptor.equals(desc1V)) {
+                                    if (!superclassOverridesMethod(owner, blockEntitySave1, desc1V, remapper)) {
+                                        super.visitMethodInsn(org.objectweb.asm.Opcodes.INVOKESTATIC, "net/chainloader/loader/compat/bridge/EventBridgeHelper", "getCurrentNbtProvider", "()Ljava/lang/Object;", false);
+                                        super.visitTypeInsn(org.objectweb.asm.Opcodes.CHECKCAST, targetRegistriesClass);
+                                        String realSaveName = remapper.mapMethodName("net/minecraft/world/level/block/entity/BlockEntity", "saveAdditional", "(Lnet/minecraft/nbt/CompoundTag;Lnet/minecraft/core/HolderLookup$Provider;)V");
+                                        if (realSaveName == null || realSaveName.isEmpty()) realSaveName = "saveAdditional";
+                                        super.visitMethodInsn(org.objectweb.asm.Opcodes.INVOKESPECIAL, owner, realSaveName, desc2V, isInterface);
+                                        return;
+                                    }
+                                } else if (isSaveDataFinal && name.equals(saveDataSave1) && descriptor.equals(desc1R)) {
+                                    if (!superclassOverridesMethod(owner, saveDataSave1, desc1R, remapper)) {
+                                        super.visitMethodInsn(org.objectweb.asm.Opcodes.INVOKESTATIC, "net/chainloader/loader/compat/bridge/EventBridgeHelper", "getCurrentNbtProvider", "()Ljava/lang/Object;", false);
+                                        super.visitTypeInsn(org.objectweb.asm.Opcodes.CHECKCAST, targetRegistriesClass);
+                                        String realSaveDataName = remapper.mapMethodName("net/minecraft/world/level/saveddata/SavedData", "save", "(Lnet/minecraft/nbt/CompoundTag;Lnet/minecraft/core/HolderLookup$Provider;)Lnet/minecraft/nbt/CompoundTag;");
+                                        if (realSaveDataName == null || realSaveDataName.isEmpty()) realSaveDataName = "save";
+                                        super.visitMethodInsn(org.objectweb.asm.Opcodes.INVOKESPECIAL, owner, realSaveDataName, desc2R, isInterface);
+                                        return;
+                                    }
+                                }
+                            }
+                            super.visitMethodInsn(opcode, owner, name, descriptor, isInterface);
+                        }
+                    };
+                }
+            }
+            return super.visitMethod(access, methodName, descriptor, signature, exceptions);
+        }
+
+        @Override
+        public void visitEnd() {
+            String targetTagClass = remapper.map("net/minecraft/nbt/CompoundTag");
+            String targetRegistriesClass = remapper.map("net/minecraft/core/HolderLookup$Provider");
+            
+            if (targetTagClass != null && targetRegistriesClass != null) {
+                String tagDesc = "L" + targetTagClass + ";";
+                String regDesc = "L" + targetRegistriesClass + ";";
+
+                String desc1V = "(" + tagDesc + ")V";
+                String desc2V = "(" + tagDesc + regDesc + ")V";
+                String desc1R = "(" + tagDesc + ")" + tagDesc;
+                String desc2R = "(" + tagDesc + regDesc + ")" + tagDesc;
+
+                if (isBlockEntitySubclass(superName, remapper)) {
+                    String loadName = remapper.mapMethodName("net/minecraft/world/level/block/entity/BlockEntity", "loadAdditional", "(Lnet/minecraft/nbt/CompoundTag;Lnet/minecraft/core/HolderLookup$Provider;)V");
+                    if (loadName == null || loadName.isEmpty()) loadName = "loadAdditional";
+
+                    String saveName = remapper.mapMethodName("net/minecraft/world/level/block/entity/BlockEntity", "saveAdditional", "(Lnet/minecraft/nbt/CompoundTag;Lnet/minecraft/core/HolderLookup$Provider;)V");
+                    if (saveName == null || saveName.isEmpty()) saveName = "saveAdditional";
+
+                    if (hasLoad1 && !hasLoad2) {
+                        if (!superclassOverridesMethod(superName, blockEntityLoad1, desc1V, remapper)) {
+                            System.out.println("[ChainLoader] Injecting BlockEntity two-argument loadAdditional bridge: " + name + " -> super: " + superName);
+                            org.objectweb.asm.MethodVisitor mv = super.visitMethod(
+                                org.objectweb.asm.Opcodes.ACC_PROTECTED,
+                                loadName,
+                                desc2V,
+                                null,
+                                null
+                            );
+                            mv.visitCode();
+                            
+                            // EventBridgeHelper.setCurrentNbtProvider(provider)
+                            mv.visitVarInsn(org.objectweb.asm.Opcodes.ALOAD, 2);
+                            mv.visitMethodInsn(org.objectweb.asm.Opcodes.INVOKESTATIC, "net/chainloader/loader/compat/bridge/EventBridgeHelper", "setCurrentNbtProvider", "(Ljava/lang/Object;)V", false);
+                            
+                            mv.visitVarInsn(org.objectweb.asm.Opcodes.ALOAD, 0);
+                            mv.visitVarInsn(org.objectweb.asm.Opcodes.ALOAD, 1);
+                            mv.visitVarInsn(org.objectweb.asm.Opcodes.ALOAD, 2);
+                            mv.visitMethodInsn(org.objectweb.asm.Opcodes.INVOKESPECIAL, superName, loadName, desc2V, false);
+                            
+                            mv.visitVarInsn(org.objectweb.asm.Opcodes.ALOAD, 0);
+                            mv.visitVarInsn(org.objectweb.asm.Opcodes.ALOAD, 1);
+                            mv.visitMethodInsn(org.objectweb.asm.Opcodes.INVOKEVIRTUAL, name, blockEntityLoad1, desc1V, false);
+                            
+                            // EventBridgeHelper.setCurrentNbtProvider(null)
+                            mv.visitInsn(org.objectweb.asm.Opcodes.ACONST_NULL);
+                            mv.visitMethodInsn(org.objectweb.asm.Opcodes.INVOKESTATIC, "net/chainloader/loader/compat/bridge/EventBridgeHelper", "setCurrentNbtProvider", "(Ljava/lang/Object;)V", false);
+                            
+                            mv.visitInsn(org.objectweb.asm.Opcodes.RETURN);
+                            mv.visitMaxs(3, 3);
+                            mv.visitEnd();
+                        }
+                    }
+
+                    if (hasSave1 && !hasSave2) {
+                        if (!superclassOverridesMethod(superName, blockEntitySave1, desc1V, remapper)) {
+                            System.out.println("[ChainLoader] Injecting BlockEntity two-argument saveAdditional bridge: " + name + " -> super: " + superName);
+                            org.objectweb.asm.MethodVisitor mv = super.visitMethod(
+                                org.objectweb.asm.Opcodes.ACC_PROTECTED,
+                                saveName,
+                                desc2V,
+                                null,
+                                null
+                            );
+                            mv.visitCode();
+                            
+                            // EventBridgeHelper.setCurrentNbtProvider(provider)
+                            mv.visitVarInsn(org.objectweb.asm.Opcodes.ALOAD, 2);
+                            mv.visitMethodInsn(org.objectweb.asm.Opcodes.INVOKESTATIC, "net/chainloader/loader/compat/bridge/EventBridgeHelper", "setCurrentNbtProvider", "(Ljava/lang/Object;)V", false);
+                            
+                            mv.visitVarInsn(org.objectweb.asm.Opcodes.ALOAD, 0);
+                            mv.visitVarInsn(org.objectweb.asm.Opcodes.ALOAD, 1);
+                            mv.visitVarInsn(org.objectweb.asm.Opcodes.ALOAD, 2);
+                            mv.visitMethodInsn(org.objectweb.asm.Opcodes.INVOKESPECIAL, superName, saveName, desc2V, false);
+                            
+                            mv.visitVarInsn(org.objectweb.asm.Opcodes.ALOAD, 0);
+                            mv.visitVarInsn(org.objectweb.asm.Opcodes.ALOAD, 1);
+                            mv.visitMethodInsn(org.objectweb.asm.Opcodes.INVOKEVIRTUAL, name, blockEntitySave1, desc1V, false);
+                            
+                            // EventBridgeHelper.setCurrentNbtProvider(null)
+                            mv.visitInsn(org.objectweb.asm.Opcodes.ACONST_NULL);
+                            mv.visitMethodInsn(org.objectweb.asm.Opcodes.INVOKESTATIC, "net/chainloader/loader/compat/bridge/EventBridgeHelper", "setCurrentNbtProvider", "(Ljava/lang/Object;)V", false);
+                            
+                            mv.visitInsn(org.objectweb.asm.Opcodes.RETURN);
+                            mv.visitMaxs(3, 3);
+                            mv.visitEnd();
+                        }
+                    }
+                } else if (isSavedDataSubclass(superName, remapper)) {
+                    String saveDataName = remapper.mapMethodName("net/minecraft/world/level/saveddata/SavedData", "save", "(Lnet/minecraft/nbt/CompoundTag;Lnet/minecraft/core/HolderLookup$Provider;)Lnet/minecraft/nbt/CompoundTag;");
+                    if (saveDataName == null || saveDataName.isEmpty()) saveDataName = "save";
+
+                    if (hasSaveData1 && !hasSaveData2) {
+                        if (!superclassOverridesMethod(superName, saveDataSave1, desc1R, remapper)) {
+                            System.out.println("[ChainLoader] Injecting SavedData two-argument save bridge: " + name + " -> super: " + superName);
+                            org.objectweb.asm.MethodVisitor mv = super.visitMethod(
+                                org.objectweb.asm.Opcodes.ACC_PUBLIC,
+                                saveDataName,
+                                desc2R,
+                                null,
+                                null
+                            );
+                            mv.visitCode();
+                            
+                            // EventBridgeHelper.setCurrentNbtProvider(provider)
+                            mv.visitVarInsn(org.objectweb.asm.Opcodes.ALOAD, 2);
+                            mv.visitMethodInsn(org.objectweb.asm.Opcodes.INVOKESTATIC, "net/chainloader/loader/compat/bridge/EventBridgeHelper", "setCurrentNbtProvider", "(Ljava/lang/Object;)V", false);
+                            
+                            mv.visitVarInsn(org.objectweb.asm.Opcodes.ALOAD, 0);
+                            mv.visitVarInsn(org.objectweb.asm.Opcodes.ALOAD, 1);
+                            mv.visitMethodInsn(org.objectweb.asm.Opcodes.INVOKEVIRTUAL, name, saveDataSave1, desc1R, false);
+                            mv.visitVarInsn(org.objectweb.asm.Opcodes.ASTORE, 3);
+                            
+                            // EventBridgeHelper.setCurrentNbtProvider(null)
+                            mv.visitInsn(org.objectweb.asm.Opcodes.ACONST_NULL);
+                            mv.visitMethodInsn(org.objectweb.asm.Opcodes.INVOKESTATIC, "net/chainloader/loader/compat/bridge/EventBridgeHelper", "setCurrentNbtProvider", "(Ljava/lang/Object;)V", false);
+                            
+                            mv.visitVarInsn(org.objectweb.asm.Opcodes.ALOAD, 3);
+                            mv.visitInsn(org.objectweb.asm.Opcodes.ARETURN);
+                            mv.visitMaxs(3, 4);
+                            mv.visitEnd();
+                        }
+                    }
+                }
+            }
+            super.visitEnd();
         }
     }
 }

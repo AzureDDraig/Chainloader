@@ -41,6 +41,10 @@ public class CreativeModeTab {
         return null;
     }
 
+    public static Builder builder() {
+        return null;
+    }
+
     public static class Builder {
         public Builder title(Component title) {
             return this;

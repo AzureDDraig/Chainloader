@@ -111,7 +111,7 @@ if (!(Test-Path -Path "bin-stubs")) {
 $compatBaseFiles = Get-ChildItem -Path "loader/loader-compat-base/src/main/java" -Filter "*.java" -Recurse | ForEach-Object { $_.FullName }
 $compatFiles = Get-ChildItem -Path "loader/loader-compat-1.21.1/src/main/java" -Filter "*.java" -Recurse | ForEach-Object { $_.FullName }
 $stubFiles = $compatFiles | Where-Object { $_ -like "*\net\minecraft\*" -or $_ -like "*/net/minecraft/*" -or $_ -like "*\com\mojang\*" -or $_ -like "*/com/mojang/*" }
-$forgeCompatFiles = Get-ChildItem -Path "loader/loader-compat-1.21.1/src/main/java/net/minecraftforge", "loader/loader-compat-1.21.1/src/main/java/net/neoforged", "loader/loader-compat-1.21.1/src/main/java/net/fabricmc", "loader/loader-compat-1.21.1/src/main/java/dev", "loader/loader-compat-1.21.1/src/main/java/team/reborn", "loader/loader-compat-1.21.1/src/main/java/net/chainloader", "loader/loader-compat-1.21.1/src/main/java/mezz", "loader/loader-compat-1.21.1/src/main/java/me", "loader/loader-compat-1.21.1/src/main/java/com" -Filter "*.java" -Recurse -ErrorAction SilentlyContinue | ForEach-Object { $_.FullName }
+$forgeCompatFiles = Get-ChildItem -Path "loader/loader-compat-1.21.1/src/main/java/net/minecraftforge", "loader/loader-compat-1.21.1/src/main/java/net/neoforged", "loader/loader-compat-1.21.1/src/main/java/net/fabricmc", "loader/loader-compat-1.21.1/src/main/java/dev", "loader/loader-compat-1.21.1/src/main/java/team/reborn", "loader/loader-compat-1.21.1/src/main/java/net/chainloader", "loader/loader-compat-1.21.1/src/main/java/mezz", "loader/loader-compat-1.21.1/src/main/java/me" -Filter "*.java" -Recurse -ErrorAction SilentlyContinue | ForEach-Object { $_.FullName }
 
 Write-Host "Diagnostic: compatFiles count = $($compatFiles.Count)"
 Write-Host "Diagnostic: stubFiles count = $($stubFiles.Count)"
@@ -210,7 +210,7 @@ Write-Host "==================================================" -ForegroundColor
 Write-Host "  LAUNCHING HEADLESS SIMULATION (JAVA 21)" -ForegroundColor Magenta
 Write-Host "==================================================" -ForegroundColor Cyan
 
-$runCp = "bin;lib/*"
+$runCp = "bin;bin-stubs;lib/*"
 & $javaPath -cp "$runCp" net.chainloader.loader.core.HeadlessSimulator
 
 Write-Host "Simulation Run Ended with Exit Code: $LASTEXITCODE" -ForegroundColor Green

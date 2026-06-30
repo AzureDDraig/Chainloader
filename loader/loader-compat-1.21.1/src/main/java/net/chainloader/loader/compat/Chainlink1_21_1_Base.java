@@ -34,12 +34,14 @@ public abstract class Chainlink1_21_1_Base implements Chainlink {
         // (they're shared across Forge/Fabric/NeoForge for the same MC version)
         synchronized (MAPPINGS_LOCK) {
             if (!mappingsLoaded) {
+                net.chainloader.loader.core.gui.EarlyLoadingScreen.getInstance().log("Compat1.21.1", "Loading shared 1.21.1 bytecode/remapping mappings...");
                 if (transformer != null) {
                     loadSharedMappings(transformer);
                 }
 
                 // Initialize the bi-directional EventTranslatorBus
                 try {
+                    net.chainloader.loader.core.gui.EarlyLoadingScreen.getInstance().log("Compat1.21.1", "Initializing EventTranslatorBus...");
                     net.chainloader.api.event.ChainEventBus hostBus = new net.chainloader.api.event.ChainEventBus();
                     net.minecraftforge.eventbus.api.IEventBus forgeBus = net.minecraftforge.common.MinecraftForge.EVENT_BUS;
                     net.neoforged.bus.api.IEventBus neoforgeBus = net.neoforged.neoforge.common.NeoForge.EVENT_BUS;
@@ -205,8 +207,9 @@ public abstract class Chainlink1_21_1_Base implements Chainlink {
             return "b";
         }
         if (isClass(owner, "net/minecraft/world/item/ItemStack", "cuq")) {
-            if (name.equals("get")) return "c";
+            if (name.equals("get")) return "a";
             if (name.equals("set")) return "b";
+            if (name.equals("remove")) return "c";
             if (name.equals("parseOptional")) return "a";
             if (name.equals("save")) return descriptor.contains("Tag") ? "b" : "a";
             if (name.equals("getEnchantments")) return "B";
@@ -251,6 +254,12 @@ public abstract class Chainlink1_21_1_Base implements Chainlink {
             isClass(owner, "net/minecraft/client/gui/screens/Screen", "fod") ||
             isClass(owner, "net/minecraft/client/gui/components/AbstractWidget", "fik")) {
             if (name.equals("mouseClicked")) return "a";
+        }
+        if (isClass(owner, "net/minecraft/core/BlockPos", "jd") ||
+            isClass(owner, "net/minecraft/core/Vec3i", "kh")) {
+            if (name.equals("getX")) return "u";
+            if (name.equals("getY")) return "v";
+            if (name.equals("getZ")) return "w";
         }
         if (isClass(owner, "net/minecraft/client/gui/screens/Screen", "fod") ||
             isClass(owner, "net/minecraft/client/gui/screens/TitleScreen", "fof") ||
@@ -624,6 +633,12 @@ public abstract class Chainlink1_21_1_Base implements Chainlink {
             return transformTitleScreen(bytes);
         } else if ("fod".equals(className)) {
             return transformScreen(bytes);
+        } else if ("fot".equals(className)) {
+            return transformAbstractContainerScreen(bytes);
+        } else if ("geb".equals(className)) {
+            return transformLocalPlayer(bytes);
+        } else if ("aur".equals(className)) {
+            return transformPlayerList(bytes);
         } else if ("frh".equals(className)) {
             return transformOptionsSubScreen(bytes);
         } else if ("fny".equals(className)) {
@@ -634,6 +649,8 @@ public abstract class Chainlink1_21_1_Base implements Chainlink {
             return transformRecipeManager(bytes);
         } else if ("fik".equals(className)) {
             return transformAbstractWidget(bytes);
+        } else if ("fio".equals(className)) {
+            return transformCheckbox(bytes);
         } else if ("fgs".equals(className)) {
             return transformOptions(bytes);
         } else if ("akr".equals(className)) {
@@ -874,6 +891,134 @@ public abstract class Chainlink1_21_1_Base implements Chainlink {
         }
     }
 
+    private byte[] transformAbstractContainerScreen(byte[] bytes) {
+        System.out.println("[Chainlink 1.21.1] Transforming AbstractContainerScreen (fot)...");
+        try {
+            ClassReader cr = new ClassReader(bytes);
+            ClassWriter cw = new ClassWriter(cr, ClassWriter.COMPUTE_FRAMES);
+            ClassVisitor cv = new ClassVisitor(Opcodes.ASM9, cw) {
+                @Override
+                public MethodVisitor visitMethod(int access, String name, String descriptor, String signature, String[] exceptions) {
+                    MethodVisitor mv = super.visitMethod(access, name, descriptor, signature, exceptions);
+                    if ("b".equals(name) && "(Lfhz;II)V".equals(descriptor)) {
+                        System.out.println("[Chainlink 1.21.1] Injecting ContainerScreenEvent.Render.Foreground in renderLabels (b)");
+                        return new MethodVisitor(Opcodes.ASM9, mv) {
+                            @Override
+                            public void visitInsn(int opcode) {
+                                if (opcode == Opcodes.RETURN) {
+                                    mv.visitVarInsn(Opcodes.ALOAD, 0);
+                                    mv.visitVarInsn(Opcodes.ALOAD, 1);
+                                    mv.visitVarInsn(Opcodes.ILOAD, 2);
+                                    mv.visitVarInsn(Opcodes.ILOAD, 3);
+                                    mv.visitMethodInsn(Opcodes.INVOKESTATIC, 
+                                        "net/chainloader/loader/compat/bridge/EventBridgeHelper", 
+                                        "onContainerScreenRenderForeground", 
+                                        "(Lfod;Lfhz;II)V", 
+                                        false);
+                                }
+                                super.visitInsn(opcode);
+                            }
+                        };
+                    }
+                    return mv;
+                }
+            };
+            cr.accept(cv, 0);
+            return cw.toByteArray();
+        } catch (Exception e) {
+            e.printStackTrace();
+            return bytes;
+        }
+    }
+
+    private byte[] transformLocalPlayer(byte[] bytes) {
+        System.out.println("[Chainlink 1.21.1] Transforming LocalPlayer (geb)...");
+        try {
+            ClassReader cr = new ClassReader(bytes);
+            ClassWriter cw = new ClassWriter(cr, ClassWriter.COMPUTE_FRAMES);
+            ClassVisitor cv = new ClassVisitor(Opcodes.ASM9, cw) {
+                @Override
+                public MethodVisitor visitMethod(int access, String name, String descriptor, String signature, String[] exceptions) {
+                    MethodVisitor mv = super.visitMethod(access, name, descriptor, signature, exceptions);
+                    if ("<init>".equals(name)) {
+                        System.out.println("[Chainlink 1.21.1] Injecting onLocalPlayerInit in constructor");
+                        return new MethodVisitor(Opcodes.ASM9, mv) {
+                            @Override
+                            public void visitInsn(int opcode) {
+                                if (opcode == Opcodes.RETURN) {
+                                    mv.visitVarInsn(Opcodes.ALOAD, 0);
+                                    mv.visitMethodInsn(Opcodes.INVOKESTATIC,
+                                        "net/chainloader/loader/compat/bridge/EventBridgeHelper",
+                                        "onLocalPlayerInit",
+                                        "(Ljava/lang/Object;)V",
+                                        false);
+                                }
+                                super.visitInsn(opcode);
+                            }
+                        };
+                    }
+                    return mv;
+                }
+            };
+            cr.accept(cv, 0);
+            return cw.toByteArray();
+        } catch (Exception e) {
+            e.printStackTrace();
+            return bytes;
+        }
+    }
+
+    private byte[] transformPlayerList(byte[] bytes) {
+        System.out.println("[Chainlink 1.21.1] Transforming PlayerList (aur)...");
+        try {
+            ClassReader cr = new ClassReader(bytes);
+            ClassWriter cw = new ClassWriter(cr, ClassWriter.COMPUTE_FRAMES);
+            ClassVisitor cv = new ClassVisitor(Opcodes.ASM9, cw) {
+                @Override
+                public MethodVisitor visitMethod(int access, String name, String descriptor, String signature, String[] exceptions) {
+                    MethodVisitor mv = super.visitMethod(access, name, descriptor, signature, exceptions);
+                    if ("a".equals(name) && "(Lvt;Laqv;Larj;)V".equals(descriptor)) {
+                        System.out.println("[Chainlink 1.21.1] Injecting onPlayerLoggedIn in placeConnection (a)");
+                        return new MethodVisitor(Opcodes.ASM9, mv) {
+                            @Override
+                            public void visitInsn(int opcode) {
+                                if (opcode == Opcodes.RETURN) {
+                                    mv.visitVarInsn(Opcodes.ALOAD, 2); // player (ServerPlayer is the 2nd argument)
+                                    mv.visitMethodInsn(Opcodes.INVOKESTATIC,
+                                        "net/chainloader/loader/compat/bridge/EventBridgeHelper",
+                                        "onPlayerLoggedIn",
+                                        "(Ljava/lang/Object;)V",
+                                        false);
+                                }
+                                super.visitInsn(opcode);
+                            }
+                        };
+                    } else if ("b".equals(name) && "(Laqv;)V".equals(descriptor)) {
+                        System.out.println("[Chainlink 1.21.1] Injecting onPlayerLoggedOut in remove (b)");
+                        return new MethodVisitor(Opcodes.ASM9, mv) {
+                            @Override
+                            public void visitCode() {
+                                super.visitCode();
+                                mv.visitVarInsn(Opcodes.ALOAD, 1); // player (ServerPlayer is the 1st argument)
+                                mv.visitMethodInsn(Opcodes.INVOKESTATIC,
+                                    "net/chainloader/loader/compat/bridge/EventBridgeHelper",
+                                    "onPlayerLoggedOut",
+                                    "(Ljava/lang/Object;)V",
+                                    false);
+                            }
+                        };
+                    }
+                    return mv;
+                }
+            };
+            cr.accept(cv, 0);
+            return cw.toByteArray();
+        } catch (Exception e) {
+            e.printStackTrace();
+            return bytes;
+        }
+    }
+
     private byte[] transformMinecraft(byte[] bytes) {
         System.out.println("[Chainlink 1.21.1] Transforming Minecraft (fgo)...");
         try {
@@ -888,6 +1033,16 @@ public abstract class Chainlink1_21_1_Base implements Chainlink {
                             @Override
                             public void visitCode() {
                                 super.visitCode();
+                                mv.visitVarInsn(Opcodes.ALOAD, 0);
+                                mv.visitFieldInsn(Opcodes.GETFIELD, "fgo", "y", "Lfod;");
+                                mv.visitVarInsn(Opcodes.ALOAD, 1);
+                                mv.visitMethodInsn(Opcodes.INVOKESTATIC, 
+                                    "net/chainloader/loader/compat/bridge/EventBridgeHelper", 
+                                    "onScreenOpening", 
+                                    "(Lfod;Lfod;)Lfod;", 
+                                    false);
+                                mv.visitVarInsn(Opcodes.ASTORE, 1);
+
                                 mv.visitVarInsn(Opcodes.ALOAD, 1);
                                 mv.visitMethodInsn(Opcodes.INVOKESTATIC, 
                                     "net/chainloader/loader/core/gui/MainMenuHelper", 
@@ -895,6 +1050,45 @@ public abstract class Chainlink1_21_1_Base implements Chainlink {
                                     "(Lfod;)Lfod;", 
                                     false);
                                 mv.visitVarInsn(Opcodes.ASTORE, 1);
+                            }
+                        };
+                    } else if ("a".equals(name) && "(Lfod;Z)V".equals(descriptor)) {
+                        System.out.println("[Chainlink 1.21.1] Injecting onLocalPlayerQuit in clearLevel (a)");
+                        return new MethodVisitor(Opcodes.ASM9, mv) {
+                            @Override
+                            public void visitCode() {
+                                super.visitCode();
+                                mv.visitMethodInsn(Opcodes.INVOKESTATIC, 
+                                    "net/chainloader/loader/compat/bridge/EventBridgeHelper", 
+                                    "onLocalPlayerQuit", 
+                                    "()V", 
+                                    false);
+                            }
+                        };
+                    } else if ("bp".equals(name) && "()V".equals(descriptor)) {
+                        System.out.println("[Chainlink 1.21.1] Injecting onClientTickPre and onClientTickPost in runTick (bp)");
+                        return new MethodVisitor(Opcodes.ASM9, mv) {
+                            @Override
+                            public void visitCode() {
+                                super.visitCode();
+                                mv.visitVarInsn(Opcodes.ALOAD, 0);
+                                mv.visitMethodInsn(Opcodes.INVOKESTATIC, 
+                                    "net/chainloader/loader/compat/bridge/EventBridgeHelper", 
+                                    "onClientTickPre", 
+                                    "(Ljava/lang/Object;)V", 
+                                    false);
+                            }
+                            @Override
+                            public void visitInsn(int opcode) {
+                                if (opcode == Opcodes.RETURN) {
+                                    mv.visitVarInsn(Opcodes.ALOAD, 0);
+                                    mv.visitMethodInsn(Opcodes.INVOKESTATIC, 
+                                        "net/chainloader/loader/compat/bridge/EventBridgeHelper", 
+                                        "onClientTickPost", 
+                                        "(Ljava/lang/Object;)V", 
+                                        false);
+                                }
+                                super.visitInsn(opcode);
                             }
                         };
                     } else if ("<init>".equals(name) && "(Lfua;)V".equals(descriptor)) {
@@ -1107,7 +1301,7 @@ public abstract class Chainlink1_21_1_Base implements Chainlink {
                                 super.visitInsn(opcode);
                             }
                         };
-                    } else if ("a".equals(name) && "(Lfhz;IIF)V".equals(descriptor)) {
+                    } else if (("a".equals(name) || "c".equals(name)) && "(Lfhz;IIF)V".equals(descriptor)) {
                         return new MethodVisitor(Opcodes.ASM9, mv) {
                             @Override
                             public void visitCode() {
@@ -1274,10 +1468,43 @@ public abstract class Chainlink1_21_1_Base implements Chainlink {
 
                 @Override
                 public org.objectweb.asm.MethodVisitor visitMethod(int access, String name, String descriptor, String signature, String[] exceptions) {
-                    if ("a".equals(name) && "(Lfhz;IIF)V".equals(descriptor)) {
+                    if (("a".equals(name) || "b".equals(name)) && "(Lfhz;IIF)V".equals(descriptor)) {
                         access = access & ~Opcodes.ACC_FINAL;
                     }
                     return super.visitMethod(access, name, descriptor, signature, exceptions);
+                }
+            };
+            cr.accept(cv, 0);
+            return cw.toByteArray();
+        } catch (Exception e) {
+            e.printStackTrace();
+            return bytes;
+        }
+    }
+
+    private byte[] transformCheckbox(byte[] bytes) {
+        try {
+            ClassReader cr = new ClassReader(bytes);
+            ClassWriter cw = new ClassWriter(cr, 0);
+            ClassVisitor cv = new ClassVisitor(Opcodes.ASM9, cw) {
+                @Override
+                public void visitEnd() {
+                    org.objectweb.asm.MethodVisitor mv = super.visitMethod(Opcodes.ACC_PUBLIC, "<init>", "(IIIILwz;Z)V", null, null);
+                    mv.visitCode();
+                    mv.visitVarInsn(Opcodes.ALOAD, 0);
+                    mv.visitVarInsn(Opcodes.ILOAD, 1);
+                    mv.visitVarInsn(Opcodes.ILOAD, 2);
+                    mv.visitVarInsn(Opcodes.ILOAD, 3);
+                    mv.visitVarInsn(Opcodes.ILOAD, 4);
+                    mv.visitVarInsn(Opcodes.ALOAD, 5);
+                    mv.visitMethodInsn(Opcodes.INVOKESPECIAL, "fid", "<init>", "(IIIILwz;)V", false);
+                    mv.visitVarInsn(Opcodes.ALOAD, 0);
+                    mv.visitVarInsn(Opcodes.ILOAD, 6);
+                    mv.visitFieldInsn(Opcodes.PUTFIELD, "fio", "o", "Z");
+                    mv.visitInsn(Opcodes.RETURN);
+                    mv.visitMaxs(6, 7);
+                    mv.visitEnd();
+                    super.visitEnd();
                 }
             };
             cr.accept(cv, 0);
@@ -1966,6 +2193,33 @@ public abstract class Chainlink1_21_1_Base implements Chainlink {
                                 super.visitInsn(opcode);
                             }
                         };
+                    } else if ("c".equals(name) && "(Ljava/util/function/BooleanSupplier;)V".equals(descriptor)) {
+                        System.out.println("[Chainlink 1.21.1] Injecting onServerTickPre and onServerTickPost in tickChildren (c)");
+                        return new MethodVisitor(Opcodes.ASM9, mv) {
+                            @Override
+                            public void visitCode() {
+                                super.visitCode();
+                                mv.visitVarInsn(Opcodes.ALOAD, 0);
+                                mv.visitMethodInsn(Opcodes.INVOKESTATIC,
+                                    "net/chainloader/loader/compat/bridge/EventBridgeHelper",
+                                    "onServerTickPre",
+                                    "(Ljava/lang/Object;)V",
+                                    false);
+                            }
+                            
+                            @Override
+                            public void visitInsn(int opcode) {
+                                if (opcode == Opcodes.RETURN) {
+                                    mv.visitVarInsn(Opcodes.ALOAD, 0);
+                                    mv.visitMethodInsn(Opcodes.INVOKESTATIC,
+                                        "net/chainloader/loader/compat/bridge/EventBridgeHelper",
+                                        "onServerTickPost",
+                                        "(Ljava/lang/Object;)V",
+                                        false);
+                                }
+                                super.visitInsn(opcode);
+                            }
+                        };
                     }
                     return mv;
                 }
@@ -2404,6 +2658,50 @@ public abstract class Chainlink1_21_1_Base implements Chainlink {
                     return new MethodVisitor(Opcodes.ASM9, mv) {
                         @Override
                         public void visitMethodInsn(int opcode, String owner, String methodName, String methodDesc, boolean isInterface) {
+                            // Redirect no-args CreativeModeTab.builder() to builder(TOP, 0)
+                            boolean isCreativeModeTabClass = "cta".equals(owner) || "net/minecraft/world/item/CreativeModeTab".equals(owner);
+                            boolean isBuilderMethod = "a".equals(methodName) || "builder".equals(methodName);
+                            boolean isBuilderDesc = "()Lcta$a;".equals(methodDesc) || "()Lnet/minecraft/world/item/CreativeModeTab$Builder;".equals(methodDesc);
+                            if (isCreativeModeTabClass && isBuilderMethod && isBuilderDesc) {
+                                System.out.println("[Chainlink 1.21.1 DEBUG] Redirecting no-args CreativeModeTab.builder() call in " + className);
+                                String rowClass = "cta$f";
+                                String builderClass = "cta$a";
+                                String tabClass = "cta";
+                                if (BytecodeTransformer.getInstance() != null) {
+                                    String mappedRow = BytecodeTransformer.getInstance().mapClassName("net.minecraft.world.item.CreativeModeTab$Row");
+                                    if (mappedRow != null) rowClass = mappedRow.replace('.', '/');
+                                    String mappedBuilder = BytecodeTransformer.getInstance().mapClassName("net.minecraft.world.item.CreativeModeTab$Builder");
+                                    if (mappedBuilder != null) builderClass = mappedBuilder.replace('.', '/');
+                                    String mappedTab = BytecodeTransformer.getInstance().mapClassName("net.minecraft.world.item.CreativeModeTab");
+                                    if (mappedTab != null) tabClass = mappedTab.replace('.', '/');
+                                }
+                                opcode = Opcodes.INVOKESTATIC;
+                                owner = "net/chainloader/loader/compat/bridge/EventBridgeHelper";
+                                methodName = "createCreativeModeTabBuilder";
+                                methodDesc = "()L" + builderClass + ";";
+                                isInterface = false;
+                            }
+
+                            // Redirect Balm persistent data hooks to EventBridgeHelper
+                            boolean isBalmHooks = "net/blay09/mods/balm/fabric/FabricBalmHooks".equals(owner) || "net/blay09/mods/balm/api/BalmHooks".equals(owner);
+                            boolean isBalmEntity = "net/blay09/mods/balm/api/entity/BalmEntity".equals(owner);
+                            boolean isGetPersistentData = "getPersistentData".equals(methodName);
+                            if ((isBalmHooks || isBalmEntity) && isGetPersistentData) {
+                                System.out.println("[Chainlink 1.21.1 DEBUG] Redirecting Balm entity persistent data call in " + className);
+                                opcode = Opcodes.INVOKESTATIC;
+                                owner = "net/chainloader/loader/compat/bridge/EventBridgeHelper";
+                                methodName = "getEntityPersistentData";
+                                String mappedTag = "ub";
+                                if (BytecodeTransformer.getInstance() != null) {
+                                    String mapped = BytecodeTransformer.getInstance().mapClassName("net.minecraft.nbt.CompoundTag");
+                                    if (mapped != null) {
+                                        mappedTag = mapped.replace('.', '/');
+                                    }
+                                }
+                                methodDesc = "(Ljava/lang/Object;)L" + mappedTag + ";";
+                                isInterface = false;
+                            }
+
                             boolean redirectedGetConnection = false;
                             boolean isPacketListener = "net/minecraft/client/multiplayer/ClientCommonPacketListenerImpl".equals(owner) || "fzc".equals(owner)
                                     || "net/minecraft/server/network/ServerCommonPacketListenerImpl".equals(owner) || "arr".equals(owner)
@@ -2463,15 +2761,46 @@ public abstract class Chainlink1_21_1_Base implements Chainlink {
                                 }
                                 isInterface = true;
                             } else {
-                                boolean isDimensionDataStorage = "net/minecraft/world/level/storage/DimensionDataStorage".equals(owner) || "eqz".equals(owner);
-                                boolean isComputeIfAbsent = "computeIfAbsent".equals(methodName) || "a".equals(methodName);
+                                boolean isDimensionDataStorage = "net/minecraft/world/level/storage/DimensionDataStorage".equals(owner) || "eqz".equals(owner) || "net/minecraft/class_26".equals(owner);
+                                boolean isComputeIfAbsent = "computeIfAbsent".equals(methodName) || "a".equals(methodName) || "getOrCreate".equals(methodName) || "method_17924".equals(methodName) || "m_164861_".equals(methodName);
                                 boolean isOldSignature = methodDesc.startsWith("(Ljava/util/function/Function;Ljava/util/function/Supplier;Ljava/lang/String;)");
+                                boolean isGet = "get".equals(methodName) || "method_120".equals(methodName) || "m_164858_".equals(methodName);
+                                boolean isGetSignature = methodDesc.startsWith("(Ljava/util/function/Function;Ljava/lang/String;)");
+
+                                boolean isRegistry = "net/minecraft/core/Registry".equals(owner) || "jz".equals(owner) || "net/minecraft/class_2378".equals(owner);
+                                boolean isRegisterStatic = "register".equals(methodName) || "a".equals(methodName) || "method_10230".equals(methodName);
+                                boolean isRegisterStaticDesc = methodDesc.equals("(Lnet/minecraft/core/Registry;Lnet/minecraft/resources/ResourceLocation;Ljava/lang/Object;)Ljava/lang/Object;") ||
+                                                               methodDesc.equals("(Ljz;Lakr;Ljava/lang/Object;)Ljava/lang/Object;") ||
+                                                               methodDesc.equals("(Lnet/minecraft/class_2378;Lnet/minecraft/class_2960;Ljava/lang/Object;)Ljava/lang/Object;");
+
                                 if (isDimensionDataStorage && isComputeIfAbsent && isOldSignature) {
                                     System.out.println("[Chainlink 1.21.1 DEBUG] Redirecting DimensionDataStorage.computeIfAbsent old signature in " + className);
                                     opcode = Opcodes.INVOKESTATIC;
                                     owner = "net/chainloader/loader/compat/bridge/EventBridgeHelper";
                                     methodName = "computeIfAbsent";
                                     methodDesc = "(Ljava/lang/Object;" + methodDesc.substring(1);
+                                    isInterface = false;
+                                } else if (isDimensionDataStorage && isGet && isGetSignature) {
+                                    System.out.println("[Chainlink 1.21.1 DEBUG] Redirecting DimensionDataStorage.get old signature in " + className);
+                                    opcode = Opcodes.INVOKESTATIC;
+                                    owner = "net/chainloader/loader/compat/bridge/EventBridgeHelper";
+                                    methodName = "get";
+                                    methodDesc = "(Ljava/lang/Object;" + methodDesc.substring(1);
+                                    isInterface = false;
+                                } else if (isRegistry && isRegisterStatic && isRegisterStaticDesc) {
+                                    System.out.println("[Chainlink 1.21.1 DEBUG] Redirecting static Registry.register in " + className);
+                                    opcode = Opcodes.INVOKESTATIC;
+                                    owner = "net/chainloader/loader/compat/bridge/EventBridgeHelper";
+                                    methodName = "register";
+                                    String mappedRegistry = "net/minecraft/core/Registry";
+                                    String mappedRL = "net/minecraft/resources/ResourceLocation";
+                                    if (BytecodeTransformer.getInstance() != null) {
+                                        String mReg = BytecodeTransformer.getInstance().mapClassName("net.minecraft.core.Registry");
+                                        if (mReg != null) mappedRegistry = mReg;
+                                        String mRL = BytecodeTransformer.getInstance().mapClassName("net.minecraft.resources.ResourceLocation");
+                                        if (mRL != null) mappedRL = mRL;
+                                    }
+                                    methodDesc = "(L" + mappedRegistry.replace('.', '/') + ";L" + mappedRL.replace('.', '/') + ";Ljava/lang/Object;)Ljava/lang/Object;";
                                     isInterface = false;
                                 } else {
                                     boolean isDyeColor = "net/minecraft/world/item/DyeColor".equals(owner) || "cti".equals(owner);
@@ -2552,10 +2881,10 @@ public abstract class Chainlink1_21_1_Base implements Chainlink {
                                 System.out.println("[Chainlink 1.21.1 DEBUG] Redirecting field GETSTATIC for CreativeModeTabs." + name + " in class=" + className);
                                 String realDesc = "Lnet/minecraft/resources/ResourceKey;";
                                 if ("Lcta;".equals(descriptor)) {
-                                    realDesc = "Lqj;";
+                                    realDesc = "Lakq;";
                                 }
                                 super.visitFieldInsn(opcode, owner, name, realDesc);
-                                super.visitMethodInsn(Opcodes.INVOKESTATIC, "net/chainloader/loader/compat/bridge/EventBridgeHelper", "getCreativeModeTab", "(Ljava/lang/Object;)Lnet/minecraft/world/item/CreativeModeTab;", false);
+                                super.visitMethodInsn(Opcodes.INVOKESTATIC, "net/chainloader/loader/compat/bridge/EventBridgeHelper", "getCreativeModeTab", "(Ljava/lang/Object;)Ljava/lang/Object;", false);
                                 if ("Lcta;".equals(descriptor)) {
                                     super.visitTypeInsn(Opcodes.CHECKCAST, "cta");
                                 } else {
@@ -2587,6 +2916,15 @@ public abstract class Chainlink1_21_1_Base implements Chainlink {
                                 value = fixHandle((Handle) value);
                             }
                             super.visitLdcInsn(value);
+                        }
+
+                        @Override
+                        public void visitTypeInsn(int opcode, String type) {
+                            if (opcode == Opcodes.CHECKCAST && "net/blay09/mods/balm/api/entity/BalmEntity".equals(type)) {
+                                System.out.println("[Chainlink 1.21.1 DEBUG] Redirecting BalmEntity CHECKCAST to java/lang/Object in " + className);
+                                type = "java/lang/Object";
+                            }
+                            super.visitTypeInsn(opcode, type);
                         }
                     };
                 }

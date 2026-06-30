@@ -20,7 +20,12 @@ public class ServerPlayNetworking {
 
     public static boolean registerGlobalReceiver(ResourceLocation channelName, PlayChannelHandler channelHandler) {
         GLOBAL_RECEIVERS.put(channelName, channelHandler);
+        net.chainloader.loader.compat.bridge.EventBridgeHelper.ensureChannelRegistered(channelName);
         return true;
+    }
+
+    public static PlayChannelHandler getGlobalReceiver(ResourceLocation channelName) {
+        return GLOBAL_RECEIVERS.get(channelName);
     }
 
     public static PlayChannelHandler unregisterGlobalReceiver(ResourceLocation channelName) {
@@ -57,6 +62,26 @@ public class ServerPlayNetworking {
 
     public static void send(ServerPlayer player, ResourceLocation channelName, FriendlyByteBuf buf) {
         System.out.println("[ServerPlayNetworking] send packet to player: " + player + " on channel: " + channelName);
+        net.chainloader.loader.compat.bridge.EventBridgeHelper.ensureChannelRegistered(channelName);
+        try {
+            int readable = buf.readableBytes();
+            byte[] bytes = new byte[readable];
+            buf.readBytes(bytes);
+            
+            if (player.connection != null) {
+                net.minecraft.network.protocol.common.ClientboundCustomPayloadPacket packet = 
+                    new net.minecraft.network.protocol.common.ClientboundCustomPayloadPacket(
+                        new net.chainloader.loader.compat.bridge.ChainloaderPayload(channelName, bytes)
+                    );
+                player.connection.send(packet);
+                System.out.println("[ServerPlayNetworking] Sent ClientboundCustomPayloadPacket for channel: " + channelName + " size: " + readable);
+            } else {
+                System.out.println("[ServerPlayNetworking] Cannot send packet: player connection is null.");
+            }
+        } catch (Throwable t) {
+            System.err.println("[ServerPlayNetworking] Failed to send packet for channel " + channelName + ":");
+            t.printStackTrace();
+        }
     }
 
     // Accessors for verification/testing

@@ -157,4 +157,33 @@ public class ScreenEvent extends Event {
             }
         }
     }
+
+    public static class Opening extends ScreenEvent {
+        private final Screen currentScreen;
+        private Screen newScreen;
+
+        public Opening(Screen currentScreen, Screen newScreen) {
+            super(newScreen);
+            this.currentScreen = currentScreen;
+            this.newScreen = newScreen;
+        }
+
+        public Screen getCurrentScreen() {
+            return currentScreen;
+        }
+
+        public Screen getNewScreen() {
+            return newScreen;
+        }
+
+        public void setNewScreen(Screen newScreen) {
+            this.newScreen = newScreen;
+        }
+
+        @Override
+        public boolean isCancelable() {
+            return true;
+        }
+    }
 }
+

@@ -23,4 +23,11 @@ public class PlayerEvent extends Event {
             super(player);
         }
     }
+
+    public static class PlayerLoggedOutEvent extends PlayerEvent {
+        public PlayerLoggedOutEvent(Player player) {
+            super(player);
+        }
+    }
 }
+

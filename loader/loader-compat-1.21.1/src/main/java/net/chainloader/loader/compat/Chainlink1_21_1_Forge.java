@@ -14,7 +14,7 @@ public class Chainlink1_21_1_Forge extends Chainlink1_21_1_Base {
 
     @Override
     public void onWakeUp(ClassLoader classLoader) {
-        System.out.println("[Chainlink 1.21.1 Forge] Initializing main platform module...");
+        net.chainloader.loader.core.gui.EarlyLoadingScreen.getInstance().log("ForgeCompat", "Initializing 1.21.1 Forge compatibility layer...");
         super.onWakeUp(classLoader);
 
         // Scan registered mods for backwards compatibility modules matching other Minecraft versions
@@ -53,7 +53,7 @@ public class Chainlink1_21_1_Forge extends Chainlink1_21_1_Base {
             }
         }
         if (match && !instantiatedClasses.contains(className)) {
-            System.out.println("[Chainlink 1.21.1 Forge] Mod version match detected. Dynamically instantiating backwards compat module: " + className);
+            net.chainloader.loader.core.gui.EarlyLoadingScreen.getInstance().log("ForgeCompat", "Detected mod version match for range " + range + ". Loading dynamic subloader: " + className);
             try {
                 Class<?> adapterClass = Class.forName(className, true, classLoader);
                 Chainlink linkInstance = (Chainlink) adapterClass.getDeclaredConstructor().newInstance();

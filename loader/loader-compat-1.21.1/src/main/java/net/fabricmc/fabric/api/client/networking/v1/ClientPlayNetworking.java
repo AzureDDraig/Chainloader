@@ -23,7 +23,12 @@ public class ClientPlayNetworking {
 
     public static boolean registerGlobalReceiver(ResourceLocation channelName, PlayChannelHandler channelHandler) {
         GLOBAL_RECEIVERS.put(channelName, channelHandler);
+        net.chainloader.loader.compat.bridge.EventBridgeHelper.ensureChannelRegistered(channelName);
         return true;
+    }
+
+    public static PlayChannelHandler getGlobalReceiver(ResourceLocation channelName) {
+        return GLOBAL_RECEIVERS.get(channelName);
     }
 
     public static PlayChannelHandler unregisterGlobalReceiver(ResourceLocation channelName) {
@@ -60,6 +65,27 @@ public class ClientPlayNetworking {
 
     public static void send(ResourceLocation channelName, FriendlyByteBuf buf) {
         System.out.println("[ClientPlayNetworking] send packet on channel: " + channelName);
+        net.chainloader.loader.compat.bridge.EventBridgeHelper.ensureChannelRegistered(channelName);
+        try {
+            int readable = buf.readableBytes();
+            byte[] bytes = new byte[readable];
+            buf.readBytes(bytes);
+            
+            Minecraft client = Minecraft.getInstance();
+            if (client.getConnection() != null) {
+                net.minecraft.network.protocol.common.ServerboundCustomPayloadPacket packet = 
+                    new net.minecraft.network.protocol.common.ServerboundCustomPayloadPacket(
+                        new net.chainloader.loader.compat.bridge.ChainloaderPayload(channelName, bytes)
+                    );
+                client.getConnection().send(packet);
+                System.out.println("[ClientPlayNetworking] Sent ServerboundCustomPayloadPacket for channel: " + channelName + " size: " + readable);
+            } else {
+                System.out.println("[ClientPlayNetworking] Cannot send packet: connection is null.");
+            }
+        } catch (Throwable t) {
+            System.err.println("[ClientPlayNetworking] Failed to send packet for channel " + channelName + ":");
+            t.printStackTrace();
+        }
     }
 
     // Accessors for verification/testing

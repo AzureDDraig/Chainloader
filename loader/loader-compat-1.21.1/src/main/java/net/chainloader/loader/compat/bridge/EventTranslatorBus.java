@@ -677,6 +677,11 @@ public class EventTranslatorBus {
         public void onItemTooltip(net.minecraftforge.event.entity.player.ItemTooltipEvent event) {
             translateForgeToHostItemTooltip(event);
         }
+
+        @net.minecraftforge.eventbus.api.SubscribeEvent
+        public void onPlayerTick(net.minecraftforge.event.TickEvent.PlayerTickEvent event) {
+            net.chainloader.loader.core.event.ChainEventBridge.postPlayerTick(event.player);
+        }
     }
 
     public class NeoForgeEventListener {
@@ -723,6 +728,11 @@ public class EventTranslatorBus {
         @net.neoforged.bus.api.SubscribeEvent
         public void onItemTooltip(net.neoforged.neoforge.event.entity.player.ItemTooltipEvent event) {
             translateNeoForgeToHostItemTooltip(event);
+        }
+
+        @net.neoforged.bus.api.SubscribeEvent
+        public void onPlayerTick(net.neoforged.neoforge.event.tick.PlayerTickEvent event) {
+            net.chainloader.loader.core.event.ChainEventBridge.postPlayerTick(event.getEntity());
         }
     }
 }

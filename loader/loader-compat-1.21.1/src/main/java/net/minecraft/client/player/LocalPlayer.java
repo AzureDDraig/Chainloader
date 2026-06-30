@@ -1,4 +1,5 @@
 package net.minecraft.client.player;
 
-public class LocalPlayer {
+public class LocalPlayer extends net.minecraft.world.entity.player.Player {
 }
+

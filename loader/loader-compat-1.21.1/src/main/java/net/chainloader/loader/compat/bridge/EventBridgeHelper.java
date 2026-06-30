@@ -13,6 +13,82 @@ import java.util.ArrayList;
 
 public class EventBridgeHelper {
 
+    public static net.minecraft.world.level.biome.Biome.Precipitation getPrecipitationBridge(Object biomeObj) {
+        if (biomeObj == null) return net.minecraft.world.level.biome.Biome.Precipitation.NONE;
+        try {
+            net.minecraft.world.level.biome.Biome biome = (net.minecraft.world.level.biome.Biome) biomeObj;
+            if (biome.hasPrecipitation()) {
+                float temp = biome.getBaseTemperature();
+                if (temp < 0.15f) {
+                    return net.minecraft.world.level.biome.Biome.Precipitation.SNOW;
+                }
+                return net.minecraft.world.level.biome.Biome.Precipitation.RAIN;
+            }
+        } catch (Throwable t) {
+            // Fallback for mock or uninitialized Biome instances
+        }
+        return net.minecraft.world.level.biome.Biome.Precipitation.NONE;
+    }
+
+    public static boolean hasHumidityBridge(Object biomeObj) {
+        if (biomeObj == null) return false;
+        try {
+            java.lang.reflect.Field climateSettingsField = null;
+            try {
+                climateSettingsField = biomeObj.getClass().getDeclaredField("i"); // Obfuscated
+            } catch (NoSuchFieldException e) {
+                // Deobfuscated
+                for (java.lang.reflect.Field f : biomeObj.getClass().getDeclaredFields()) {
+                    if (f.getType().getName().contains("ClimateSettings")) {
+                        climateSettingsField = f;
+                        break;
+                    }
+                }
+            }
+            if (climateSettingsField != null) {
+                climateSettingsField.setAccessible(true);
+                Object climateSettings = climateSettingsField.get(biomeObj);
+                if (climateSettings != null) {
+                    java.lang.reflect.Field downfallField = null;
+                    try {
+                        downfallField = climateSettings.getClass().getDeclaredField("e"); // Obfuscated
+                    } catch (NoSuchFieldException e) {
+                        try {
+                            downfallField = climateSettings.getClass().getDeclaredField("downfall"); // Deobfuscated
+                        } catch (NoSuchFieldException ex) {
+                            // Fallback to second float field
+                            int floatCount = 0;
+                            for (java.lang.reflect.Field f : climateSettings.getClass().getDeclaredFields()) {
+                                if (f.getType() == float.class) {
+                                    floatCount++;
+                                    if (floatCount == 2) {
+                                        downfallField = f;
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    if (downfallField != null) {
+                        downfallField.setAccessible(true);
+                        float downfall = downfallField.getFloat(climateSettings);
+                        return downfall > 0.85f;
+                    }
+                }
+            }
+        } catch (Throwable t) {
+            t.printStackTrace();
+        }
+        return false;
+    }
+
+    public static net.minecraft.server.level.ServerLevel getServerLevelBridge(Object playerObj) {
+        if (playerObj instanceof net.minecraft.server.level.ServerPlayer player) {
+            return (net.minecraft.server.level.ServerLevel) (Object) player.level;
+        }
+        return null;
+    }
+
     public static com.mojang.serialization.MapCodec<?> getLegacyCodecBridge(Object instance) {
         try {
             for (java.lang.reflect.Method m : instance.getClass().getMethods()) {
@@ -70,6 +146,7 @@ public class EventBridgeHelper {
                     }
                 }
             } catch (Throwable t) {
+                t.printStackTrace();
                 return com.mojang.serialization.DataResult.error(t::getMessage);
             }
             return com.mojang.serialization.DataResult.error(() -> "Failed to decode legacy recipe using " + serializer.getClass().getName());
@@ -445,6 +522,18 @@ public class EventBridgeHelper {
                     }
                 }
             }
+            net.minecraft.world.item.enchantment.ItemEnchantments stored = stack.get(net.minecraft.core.component.DataComponents.STORED_ENCHANTMENTS);
+            if (stored != null) {
+                for (java.util.Map.Entry<net.minecraft.core.Holder<net.minecraft.world.item.enchantment.Enchantment>, Integer> entry : stored.entrySet()) {
+                    net.minecraft.core.Holder<net.minecraft.world.item.enchantment.Enchantment> holder = entry.getKey();
+                    if (holder != null) {
+                        net.minecraft.world.item.enchantment.Enchantment value = holder.value();
+                        if (value != null) {
+                            map.put(value, entry.getValue());
+                        }
+                    }
+                }
+            }
         } catch (Throwable t) {
             t.printStackTrace();
         }
@@ -693,6 +782,7 @@ public class EventBridgeHelper {
         System.out.println("[ChainLoader] Firing RegisterEvents to all mod event buses (before registry freeze)...");
 
         java.util.Set<Object> buses = net.chainloader.loader.core.ModScanner.getModEventBuses();
+        
         net.minecraft.resources.ResourceKey<?>[] registriesToFire = {
             net.minecraft.core.registries.Registries.BLOCK,
             net.minecraft.core.registries.Registries.ITEM,
@@ -732,6 +822,37 @@ public class EventBridgeHelper {
                 }
             }
         }
+
+        // Process unified core registries from ChainRegistryBridge
+        while (!net.chainloader.loader.core.registry.ChainRegistryBridge.getPendingEntries().isEmpty()) {
+            net.chainloader.loader.core.registry.ChainRegistryBridge.RegistryEntry entry = 
+                net.chainloader.loader.core.registry.ChainRegistryBridge.getPendingEntries().poll();
+            if (entry != null) {
+                try {
+                    System.out.println("[ChainLoader] Processing core registry entry: " + entry.registryName + " -> " + entry.entryId);
+                    net.minecraft.resources.ResourceLocation registryId = entry.registryName.contains(":") 
+                        ? new net.minecraft.resources.ResourceLocation(entry.registryName) 
+                        : new net.minecraft.resources.ResourceLocation("minecraft", entry.registryName);
+                    net.minecraft.core.WritableRegistry<?> registry = (net.minecraft.core.WritableRegistry<?>) 
+                        net.minecraft.core.registries.BuiltInRegistries.REGISTRY.get(registryId);
+                    if (registry != null) {
+                        net.minecraft.resources.ResourceLocation entryId = new net.minecraft.resources.ResourceLocation(entry.entryId);
+                        net.minecraft.core.Registry.register(
+                            (net.minecraft.core.Registry) registry,
+                            entryId,
+                            entry.value
+                        );
+                        System.out.println("[ChainLoader] Successfully registered " + entry.entryId + " to registry: " + entry.registryName);
+                    } else {
+                        System.err.println("[ChainLoader] Core registry not found: " + entry.registryName);
+                    }
+                } catch (Throwable t) {
+                    System.err.println("[ChainLoader] Failed to process core registry entry: " + entry.entryId);
+                    t.printStackTrace();
+                }
+            }
+        }
+
         System.out.println("[ChainLoader] RegisterEvents fired successfully.");
         populateModBlockStates();
     }
@@ -870,8 +991,22 @@ public class EventBridgeHelper {
                         intrusiveHoldersField.setAccessible(true);
                         Object existing = intrusiveHoldersField.get(registry);
                         if (existing == null) {
-                            System.out.println("[ChainLoader] Enabling intrusive holders on registry " + clazz.getName() + " (field: " + intrusiveHoldersField.getName() + ") for " + name);
-                            intrusiveHoldersField.set(registry, new java.util.IdentityHashMap<>());
+                            boolean needsIntrusive = false;
+                            if (registry instanceof net.minecraft.core.Registry) {
+                                String regPath = ((net.minecraft.core.Registry<?>) registry).key().location().getPath();
+                                if (regPath.equals("block") || regPath.equals("item") || regPath.equals("fluid") || regPath.equals("entity_type") || regPath.equals("game_event")) {
+                                    needsIntrusive = true;
+                                }
+                            } else {
+                                String regStr = registry.toString().toLowerCase();
+                                if (regStr.contains("block") || regStr.contains("item") || regStr.contains("fluid") || regStr.contains("entity") || regStr.contains("game_event")) {
+                                    needsIntrusive = true;
+                                }
+                            }
+                            if (needsIntrusive) {
+                                System.out.println("[ChainLoader] Enabling intrusive holders on registry " + clazz.getName() + " (field: " + intrusiveHoldersField.getName() + ") for " + name);
+                                intrusiveHoldersField.set(registry, new java.util.IdentityHashMap<>());
+                            }
                         }
                     } catch (Throwable t) {
                         // Ignore
@@ -956,27 +1091,28 @@ public class EventBridgeHelper {
         System.out.println("[ChainLoader] Posting setup events to " + buses.size() + " mod event buses...");
 
         // 1a. Fire RegisterEvents (idempotent — may have already been fired from ModScanner.initializeMods before freeze)
+        registerPayloadHandlers(buses);
         fireRegisterEvents();
 
         net.chainloader.loader.core.gui.EarlyLoadingScreen.getInstance().updateProgress(92, "Posting mod lifecycle setup events...");
-        net.neoforged.neoforge.client.event.EntityRenderersEvent.RegisterRenderers registerRenderersEvent = new net.neoforged.neoforge.client.event.EntityRenderersEvent.RegisterRenderers();
-        net.neoforged.neoforge.client.event.EntityRenderersEvent.RegisterLayerDefinitions registerLayerDefsEvent = new net.neoforged.neoforge.client.event.EntityRenderersEvent.RegisterLayerDefinitions();
+        Object registerRenderersEvent = instantiateEventReflectively(net.neoforged.neoforge.client.event.EntityRenderersEvent.RegisterRenderers.class);
+        Object registerLayerDefsEvent = instantiateEventReflectively(net.neoforged.neoforge.client.event.EntityRenderersEvent.RegisterLayerDefinitions.class);
 
         for (Object bus : buses) {
             String className = bus.getClass().getName();
             if (className.contains("neoforged")) {
                 System.out.println("  Posting NeoForge setup events to: " + className);
                 try {
-                    postToBus(bus, new net.neoforged.neoforge.network.event.RegisterPayloadHandlersEvent());
-                    postToBus(bus, new net.neoforged.fml.event.lifecycle.FMLCommonSetupEvent());
-                    postToBus(bus, new net.neoforged.fml.event.lifecycle.FMLClientSetupEvent());
-                    postToBus(bus, new net.neoforged.neoforge.client.event.RegisterGuiLayersEvent());
-                    postToBus(bus, new net.neoforged.neoforge.client.event.RegisterClientTooltipComponentFactoriesEvent());
-                    postToBus(bus, new net.neoforged.neoforge.client.event.RegisterKeyMappingsEvent());
+                    postToBus(bus, instantiateEventReflectively(net.neoforged.neoforge.network.event.RegisterPayloadHandlersEvent.class));
+                    postToBus(bus, instantiateEventReflectively(net.neoforged.fml.event.lifecycle.FMLCommonSetupEvent.class));
+                    postToBus(bus, instantiateEventReflectively(net.neoforged.fml.event.lifecycle.FMLClientSetupEvent.class));
+                    postToBus(bus, instantiateEventReflectively(net.neoforged.neoforge.client.event.RegisterGuiLayersEvent.class));
+                    postToBus(bus, instantiateEventReflectively(net.neoforged.neoforge.client.event.RegisterClientTooltipComponentFactoriesEvent.class));
+                    postToBus(bus, instantiateEventReflectively(net.neoforged.neoforge.client.event.RegisterKeyMappingsEvent.class));
                     
                     // Fire NeoForge EntityRenderersEvent.RegisterRenderers and RegisterLayerDefinitions
-                    postToBus(bus, registerRenderersEvent);
-                    postToBus(bus, registerLayerDefsEvent);
+                    if (registerRenderersEvent != null) postToBus(bus, registerRenderersEvent);
+                    if (registerLayerDefsEvent != null) postToBus(bus, registerLayerDefsEvent);
                 } catch (Throwable e) {
                     System.err.println("  Failed to post NeoForge lifecycle events:");
                     e.printStackTrace();
@@ -984,9 +1120,9 @@ public class EventBridgeHelper {
             } else if (className.contains("minecraftforge")) {
                 System.out.println("  Posting Forge setup events to: " + className);
                 try {
-                    postToBus(bus, new net.minecraftforge.fml.event.lifecycle.FMLCommonSetupEvent());
-                    postToBus(bus, new net.minecraftforge.fml.event.lifecycle.FMLClientSetupEvent());
-                    postToBus(bus, new net.minecraftforge.client.event.RegisterKeyMappingsEvent());
+                    postToBus(bus, instantiateEventReflectively(net.minecraftforge.fml.event.lifecycle.FMLCommonSetupEvent.class));
+                    postToBus(bus, instantiateEventReflectively(net.minecraftforge.fml.event.lifecycle.FMLClientSetupEvent.class));
+                    postToBus(bus, instantiateEventReflectively(net.minecraftforge.client.event.RegisterKeyMappingsEvent.class));
                 } catch (Throwable e) {
                     System.err.println("  Failed to post Forge lifecycle events:");
                     e.printStackTrace();
@@ -1100,6 +1236,14 @@ public class EventBridgeHelper {
         if (keyMapping != null && !customKeyMappings.contains(keyMapping)) {
             customKeyMappings.add(keyMapping);
             System.out.println("[ChainLoader] Registered custom key mapping: " + keyMapping.getName());
+            try {
+                net.minecraft.client.Minecraft mc = net.minecraft.client.Minecraft.getInstance();
+                if (mc != null && mc.options != null && mc.options.keyMappings != null) {
+                    injectKeyMappings(mc);
+                }
+            } catch (Throwable t) {
+                // Ignore if called too early
+            }
         }
     }
 
@@ -1111,7 +1255,20 @@ public class EventBridgeHelper {
                 return;
             }
             
-            net.minecraft.client.KeyMapping[] original = mc.options.keyMappings;
+            net.minecraft.client.KeyMapping[] original = null;
+            java.lang.reflect.Field keyMappingsField = null;
+            for (java.lang.reflect.Field f : net.minecraft.client.Options.class.getDeclaredFields()) {
+                if (f.getType() == net.minecraft.client.KeyMapping[].class) {
+                    f.setAccessible(true);
+                    net.minecraft.client.KeyMapping[] currentVal = (net.minecraft.client.KeyMapping[]) f.get(mc.options);
+                    if (currentVal != null && currentVal.length > 15) {
+                        keyMappingsField = f;
+                        original = currentVal;
+                        break;
+                    }
+                }
+            }
+
             if (original == null) {
                 original = new net.minecraft.client.KeyMapping[0];
             }
@@ -1141,13 +1298,89 @@ public class EventBridgeHelper {
                 newArray[original.length + i] = toAdd.get(i);
             }
             
-            mc.options.keyMappings = newArray;
+            if (keyMappingsField != null) {
+                java.lang.reflect.Field unsafeField = sun.misc.Unsafe.class.getDeclaredField("theUnsafe");
+                unsafeField.setAccessible(true);
+                sun.misc.Unsafe unsafe = (sun.misc.Unsafe) unsafeField.get(null);
+                long offset = unsafe.objectFieldOffset(keyMappingsField);
+                unsafe.putObject(mc.options, offset, newArray);
+            } else {
+                throw new NoSuchFieldException("Could not find keyMappings field");
+            }
+            
             mc.options.load();
             System.out.println("[ChainLoader] Successfully injected " + toAdd.size() + " custom key mappings into Minecraft options.");
         } catch (Throwable t) {
             System.err.println("[ChainLoader] Failed to inject custom key mappings:");
             t.printStackTrace();
         }
+    }
+
+    public static int drawInBatchBridge(net.minecraft.client.gui.Font font, com.mojang.blaze3d.vertex.PoseStack poseStack, net.minecraft.util.FormattedCharSequence text, float x, float y, int color) {
+        try {
+            org.joml.Matrix4f matrix = poseStack != null && poseStack.last() != null ? poseStack.last().pose() : new org.joml.Matrix4f();
+            net.minecraft.client.renderer.MultiBufferSource buffer = null;
+            try {
+                net.minecraft.client.Minecraft mc = net.minecraft.client.Minecraft.getInstance();
+                if (mc != null && mc.renderBuffers() != null) {
+                    buffer = mc.renderBuffers().bufferSource();
+                }
+            } catch (Throwable t) {
+                // ignore
+            }
+            if (buffer == null) {
+                return 0;
+            }
+            net.minecraft.client.gui.Font.DisplayMode mode = net.minecraft.client.gui.Font.DisplayMode.NORMAL;
+            return font.drawInBatch(text, x, y, color, false, matrix, buffer, mode, 0, 15728880);
+        } catch (Throwable t) {
+            t.printStackTrace();
+            return 0;
+        }
+    }
+
+    public static int drawInBatchComponentBridge(net.minecraft.client.gui.Font font, com.mojang.blaze3d.vertex.PoseStack poseStack, net.minecraft.network.chat.Component text, float x, float y, int color) {
+        try {
+            org.joml.Matrix4f matrix = poseStack != null && poseStack.last() != null ? poseStack.last().pose() : new org.joml.Matrix4f();
+            net.minecraft.client.renderer.MultiBufferSource buffer = null;
+            try {
+                net.minecraft.client.Minecraft mc = net.minecraft.client.Minecraft.getInstance();
+                if (mc != null && mc.renderBuffers() != null) {
+                    buffer = mc.renderBuffers().bufferSource();
+                }
+            } catch (Throwable t) {
+                // ignore
+            }
+            if (buffer == null) {
+                return 0;
+            }
+            net.minecraft.client.gui.Font.DisplayMode mode = net.minecraft.client.gui.Font.DisplayMode.NORMAL;
+            return font.drawInBatch(text, x, y, color, false, matrix, buffer, mode, 0, 15728880);
+        } catch (Throwable t) {
+            t.printStackTrace();
+            return 0;
+        }
+    }
+
+    public static net.minecraft.core.BlockPos readBlockPosBridge(net.minecraft.nbt.CompoundTag tag) {
+        if (tag == null) {
+            return net.minecraft.core.BlockPos.ZERO;
+        }
+        int x = tag.getInt("X");
+        int y = tag.getInt("Y");
+        int z = tag.getInt("Z");
+        return new net.minecraft.core.BlockPos(x, y, z);
+    }
+
+    public static net.minecraft.nbt.CompoundTag writeBlockPosBridge(net.minecraft.core.BlockPos pos) {
+        if (pos == null) {
+            return new net.minecraft.nbt.CompoundTag();
+        }
+        net.minecraft.nbt.CompoundTag tag = new net.minecraft.nbt.CompoundTag();
+        tag.putInt("X", pos.getX());
+        tag.putInt("Y", pos.getY());
+        tag.putInt("Z", pos.getZ());
+        return tag;
     }
 
     @SuppressWarnings("unchecked")
@@ -1230,6 +1463,108 @@ public class EventBridgeHelper {
         return net.minecraft.core.RegistryAccess.EMPTY;
     }
 
+    public static class TrackedCompoundTag extends net.minecraft.nbt.CompoundTag {
+        private final net.minecraft.world.item.ItemStack stack;
+
+        public TrackedCompoundTag(net.minecraft.world.item.ItemStack stack, net.minecraft.nbt.CompoundTag src) {
+            this.stack = stack;
+            if (src != null) {
+                for (String key : src.getAllKeys()) {
+                    super.put(key, src.get(key).copy());
+                }
+            }
+        }
+
+        private void update() {
+            stack.set(net.minecraft.core.component.DataComponents.CUSTOM_DATA, net.minecraft.world.item.component.CustomData.of(this));
+        }
+
+        @Override
+        public net.minecraft.nbt.Tag put(String key, net.minecraft.nbt.Tag value) {
+            net.minecraft.nbt.Tag res = super.put(key, value);
+            update();
+            return res;
+        }
+
+        @Override
+        public void putByte(String key, byte value) {
+            super.putByte(key, value);
+            update();
+        }
+
+        @Override
+        public void putShort(String key, short value) {
+            super.putShort(key, value);
+            update();
+        }
+
+        @Override
+        public void putInt(String key, int value) {
+            super.putInt(key, value);
+            update();
+        }
+
+        @Override
+        public void putLong(String key, long value) {
+            super.putLong(key, value);
+            update();
+        }
+
+        @Override
+        public void putFloat(String key, float value) {
+            super.putFloat(key, value);
+            update();
+        }
+
+        @Override
+        public void putDouble(String key, double value) {
+            super.putDouble(key, value);
+            update();
+        }
+
+        @Override
+        public void putString(String key, String value) {
+            super.putString(key, value);
+            update();
+        }
+
+        @Override
+        public void putByteArray(String key, byte[] value) {
+            super.putByteArray(key, value);
+            update();
+        }
+
+        @Override
+        public void putIntArray(String key, int[] value) {
+            super.putIntArray(key, value);
+            update();
+        }
+
+        @Override
+        public void putLongArray(String key, long[] value) {
+            super.putLongArray(key, value);
+            update();
+        }
+
+        @Override
+        public void putBoolean(String key, boolean value) {
+            super.putBoolean(key, value);
+            update();
+        }
+
+        @Override
+        public void remove(String key) {
+            super.remove(key);
+            update();
+        }
+
+        @Override
+        public void putUUID(String key, java.util.UUID value) {
+            super.putUUID(key, value);
+            update();
+        }
+    }
+
     public static Object getItemStackNbt(Object stackObj) {
         if (stackObj == null) {
             return null;
@@ -1237,9 +1572,16 @@ public class EventBridgeHelper {
         if (stackObj instanceof net.minecraft.world.item.ItemStack) {
             net.minecraft.world.item.ItemStack stack = (net.minecraft.world.item.ItemStack) stackObj;
             net.minecraft.world.item.component.CustomData customData = stack.get(net.minecraft.core.component.DataComponents.CUSTOM_DATA);
+            net.minecraft.nbt.CompoundTag tag = null;
             if (customData != null) {
-                return customData.copyTag();
+                tag = customData.copyTag();
+                if (tag.contains("chainloader_nbt_compat")) {
+                    tag.remove("chainloader_nbt_compat");
+                }
+            } else {
+                return null;
             }
+            return new TrackedCompoundTag(stack, tag);
         }
         return null;
     }
@@ -1310,11 +1652,17 @@ public class EventBridgeHelper {
     public static void setItemStackNbt(Object stackObj, Object nbtObj) {
         if (stackObj instanceof net.minecraft.world.item.ItemStack) {
             net.minecraft.world.item.ItemStack stack = (net.minecraft.world.item.ItemStack) stackObj;
+            System.out.println("[EventBridgeHelper] setItemStackNbt: stack=" + stack + " (hash=" + System.identityHashCode(stack) + "), nbtObj=" + nbtObj);
             if (nbtObj == null) {
                 stack.remove(net.minecraft.core.component.DataComponents.CUSTOM_DATA);
             } else if (nbtObj instanceof net.minecraft.nbt.CompoundTag) {
                 net.minecraft.nbt.CompoundTag tag = (net.minecraft.nbt.CompoundTag) nbtObj;
+                if (tag.isEmpty()) {
+                    tag = tag.copy();
+                    tag.putBoolean("chainloader_nbt_compat", true);
+                }
                 stack.set(net.minecraft.core.component.DataComponents.CUSTOM_DATA, net.minecraft.world.item.component.CustomData.of(tag));
+                System.out.println("[EventBridgeHelper]   set CUSTOM_DATA to tag keys: " + tag.getAllKeys());
             }
         }
     }
@@ -1932,6 +2280,19 @@ public class EventBridgeHelper {
             java.util.function.Supplier<T> constructor,
             String name) {
         System.out.println("[EventBridgeHelper] computeIfAbsent redirect for: " + name);
+        
+        // Wrap and register in ChainWorldDataBridge
+        net.chainloader.loader.core.world.ChainWorldDataBridge.registerWorldData(name, new net.chainloader.loader.core.world.ChainWorldData() {
+            @Override
+            public void read(Object nbt) {
+                readFunction.apply((net.minecraft.nbt.CompoundTag) nbt);
+            }
+            @Override
+            public Object write(Object nbt) {
+                return nbt;
+            }
+        });
+
         net.minecraft.world.level.storage.DimensionDataStorage storage = (net.minecraft.world.level.storage.DimensionDataStorage) storageObj;
         net.minecraft.world.level.saveddata.SavedData.Factory<T> factory = new net.minecraft.world.level.saveddata.SavedData.Factory<>(
             constructor,
@@ -1941,6 +2302,170 @@ public class EventBridgeHelper {
         return storage.computeIfAbsent(factory, name);
     }
 
+    public static void onContainerScreenRenderForeground(net.minecraft.client.gui.screens.Screen screen, net.minecraft.client.gui.GuiGraphics graphics, int mouseX, int mouseY) {
+        if (screen instanceof net.minecraft.client.gui.screens.inventory.AbstractContainerScreen) {
+            net.neoforged.neoforge.common.NeoForge.EVENT_BUS.post(
+                new net.neoforged.neoforge.client.event.ContainerScreenEvent.Render.Foreground(
+                    (net.minecraft.client.gui.screens.inventory.AbstractContainerScreen<?>) screen,
+                    graphics,
+                    mouseX,
+                    mouseY
+                )
+            );
+        }
+    }
+
+    public static net.minecraft.client.gui.screens.Screen onScreenOpening(net.minecraft.client.gui.screens.Screen currentScreen, net.minecraft.client.gui.screens.Screen newScreen) {
+        net.neoforged.neoforge.client.event.ScreenEvent.Opening event =
+            new net.neoforged.neoforge.client.event.ScreenEvent.Opening(currentScreen, newScreen);
+        boolean cancelled = net.neoforged.neoforge.common.NeoForge.EVENT_BUS.post(event);
+        if (cancelled) {
+            return null;
+        }
+        return event.getNewScreen();
+    }
+
+    public static void onClientTickPre(Object minecraft) {
+        net.neoforged.neoforge.common.NeoForge.EVENT_BUS.post(
+            new net.neoforged.neoforge.client.event.ClientTickEvent.Pre()
+        );
+        net.minecraftforge.common.MinecraftForge.EVENT_BUS.post(
+            new net.minecraftforge.event.TickEvent.ClientTickEvent(net.minecraftforge.event.TickEvent.Phase.START)
+        );
+        try {
+            net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents.START_CLIENT_TICK.invoker().onStartTick((net.minecraft.client.Minecraft) minecraft);
+        } catch (Throwable t) {
+            // Ignore
+        }
+    }
+
+    public static void onClientTickPost(Object minecraft) {
+        net.neoforged.neoforge.common.NeoForge.EVENT_BUS.post(
+            new net.neoforged.neoforge.client.event.ClientTickEvent.Post()
+        );
+        net.minecraftforge.common.MinecraftForge.EVENT_BUS.post(
+            new net.minecraftforge.event.TickEvent.ClientTickEvent(net.minecraftforge.event.TickEvent.Phase.END)
+        );
+        try {
+            net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents.END_CLIENT_TICK.invoker().onEndTick((net.minecraft.client.Minecraft) minecraft);
+        } catch (Throwable t) {
+            // Ignore
+        }
+        
+        try {
+            for (dev.architectury.event.events.client.ClientTickEvent.Client listener : dev.architectury.event.events.client.ClientTickEvent.getListeners()) {
+                listener.post((net.minecraft.client.Minecraft) minecraft);
+            }
+        } catch (Throwable t) {
+            // Ignore
+        }
+    }
+
+    public static void onServerTickPre(Object server) {
+        net.neoforged.neoforge.common.NeoForge.EVENT_BUS.post(
+            new net.neoforged.neoforge.event.tick.ServerTickEvent.Pre((net.minecraft.server.MinecraftServer) server)
+        );
+        net.minecraftforge.common.MinecraftForge.EVENT_BUS.post(
+            new net.minecraftforge.event.TickEvent.ServerTickEvent(net.minecraftforge.event.TickEvent.Phase.START)
+        );
+    }
+
+    public static void onServerTickPost(Object server) {
+        net.neoforged.neoforge.common.NeoForge.EVENT_BUS.post(
+            new net.neoforged.neoforge.event.tick.ServerTickEvent.Post((net.minecraft.server.MinecraftServer) server)
+        );
+        net.minecraftforge.common.MinecraftForge.EVENT_BUS.post(
+            new net.minecraftforge.event.TickEvent.ServerTickEvent(net.minecraftforge.event.TickEvent.Phase.END)
+        );
+    }
+
+    public static void onLocalPlayerInit(Object playerObj) {
+        net.minecraft.client.player.LocalPlayer player = (net.minecraft.client.player.LocalPlayer) playerObj;
+        System.out.println("[EventBridgeHelper] LocalPlayer initialized: " + (player.getGameProfile() != null ? player.getGameProfile().getName() : "unknown"));
+        
+        try {
+            for (dev.architectury.event.events.client.ClientPlayerEvent.ClientPlayerJoin listener : dev.architectury.event.events.client.ClientPlayerEvent.getJoinListeners()) {
+                listener.join(player);
+            }
+        } catch (Throwable t) {
+            // Ignore
+        }
+    }
+
+    public static void onLocalPlayerQuit() {
+        System.out.println("[EventBridgeHelper] LocalPlayer quit");
+        try {
+            net.minecraft.client.player.LocalPlayer player = net.minecraft.client.Minecraft.getInstance().player;
+            if (player != null) {
+                for (dev.architectury.event.events.client.ClientPlayerEvent.ClientPlayerQuit listener : dev.architectury.event.events.client.ClientPlayerEvent.getQuitListeners()) {
+                    listener.quit(player);
+                }
+            }
+        } catch (Throwable t) {
+            // Ignore
+        }
+    }
+
+    public static void onPlayerLoggedIn(Object playerObj) {
+        net.minecraft.server.level.ServerPlayer player = (net.minecraft.server.level.ServerPlayer) playerObj;
+        System.out.println("[EventBridgeHelper] ServerPlayer logged in: " + (player.getGameProfile() != null ? player.getGameProfile().getName() : "unknown"));
+        
+        net.neoforged.neoforge.common.NeoForge.EVENT_BUS.post(
+            new net.neoforged.neoforge.event.entity.player.PlayerEvent.PlayerLoggedInEvent(player)
+        );
+        net.minecraftforge.common.MinecraftForge.EVENT_BUS.post(
+            new net.minecraftforge.event.entity.player.PlayerEvent.PlayerLoggedInEvent(player)
+        );
+        
+        try {
+            for (dev.architectury.event.events.common.PlayerEvent.PlayerJoin listener : dev.architectury.event.events.common.PlayerEvent.getJoinListeners()) {
+                listener.join(player);
+            }
+        } catch (Throwable t) {
+            // Ignore
+        }
+    }
+
+    public static void onPlayerLoggedOut(Object playerObj) {
+        net.minecraft.server.level.ServerPlayer player = (net.minecraft.server.level.ServerPlayer) playerObj;
+        System.out.println("[EventBridgeHelper] ServerPlayer logged out: " + (player.getGameProfile() != null ? player.getGameProfile().getName() : "unknown"));
+        
+        net.neoforged.neoforge.common.NeoForge.EVENT_BUS.post(
+            new net.neoforged.neoforge.event.entity.player.PlayerEvent.PlayerLoggedOutEvent(player)
+        );
+        net.minecraftforge.common.MinecraftForge.EVENT_BUS.post(
+            new net.minecraftforge.event.entity.player.PlayerEvent.PlayerLoggedOutEvent(player)
+        );
+        
+        try {
+            for (dev.architectury.event.events.common.PlayerEvent.PlayerQuit listener : dev.architectury.event.events.common.PlayerEvent.getQuitListeners()) {
+                listener.quit(player);
+            }
+        } catch (Throwable t) {
+            // Ignore
+        }
+    }
+
+    public static <T extends net.minecraft.world.level.saveddata.SavedData> T get(
+            Object storageObj,
+            java.util.function.Function<net.minecraft.nbt.CompoundTag, T> readFunction,
+            String name) {
+        System.out.println("[EventBridgeHelper] get redirect for: " + name);
+        net.minecraft.world.level.storage.DimensionDataStorage storage = (net.minecraft.world.level.storage.DimensionDataStorage) storageObj;
+        net.minecraft.world.level.saveddata.SavedData.Factory<T> factory = new net.minecraft.world.level.saveddata.SavedData.Factory<>(
+            () -> null,
+            (nbt, provider) -> readFunction.apply(nbt),
+            net.minecraft.util.datafix.DataFixTypes.LEVEL
+        );
+        return storage.get(factory, name);
+    }
+
+    public static <V, T extends V> T register(net.minecraft.core.Registry<V> registry, net.minecraft.resources.ResourceLocation name, T value) {
+        System.out.println("[EventBridgeHelper] Registry.register redirect for: " + name + " in " + registry.key().location());
+        registerCleanly(registry, name, value);
+        return value;
+    }
+
     public static net.minecraft.network.protocol.game.ClientboundBlockEntityDataPacket createBlockEntityDataPacket(
             net.minecraft.world.level.block.entity.BlockEntity blockEntity,
             java.util.function.Function<net.minecraft.world.level.block.entity.BlockEntity, net.minecraft.nbt.CompoundTag> tagFunction) {
@@ -1948,6 +2473,13 @@ public class EventBridgeHelper {
             blockEntity,
             (be, provider) -> tagFunction.apply(be)
         );
+    }
+
+        private static final java.util.Map<Object, net.minecraft.nbt.CompoundTag> entityPersistentData = new java.util.concurrent.ConcurrentHashMap<>();
+
+    public static net.minecraft.nbt.CompoundTag getEntityPersistentData(Object entity) {
+        if (entity == null) return new net.minecraft.nbt.CompoundTag();
+        return entityPersistentData.computeIfAbsent(entity, k -> new net.minecraft.nbt.CompoundTag());
     }
 
     public static net.minecraft.nbt.CompoundTag writeBlockPosCompound(net.minecraft.core.BlockPos pos) {
@@ -1990,7 +2522,7 @@ public class EventBridgeHelper {
         return null;
     }
 
-    public static net.minecraft.world.item.CreativeModeTab getCreativeModeTab(Object resourceKeyObj) {
+    public static Object getCreativeModeTab(Object resourceKeyObj) {
         if (resourceKeyObj instanceof net.minecraft.resources.ResourceKey) {
             net.minecraft.resources.ResourceKey<net.minecraft.world.item.CreativeModeTab> key = 
                 (net.minecraft.resources.ResourceKey<net.minecraft.world.item.CreativeModeTab>) resourceKeyObj;
@@ -2363,7 +2895,378 @@ public class EventBridgeHelper {
             System.out.println("[EventBridgeHelper] Registered extra model: " + modelLoc);
         } catch (Throwable t) {
             System.err.println("[EventBridgeHelper] Failed to register extra model " + modelLoc + " on event:");
+        }
+    }
+
+    private static int nextTabColumn = 0;
+    public static net.minecraft.world.item.CreativeModeTab.Builder createCreativeModeTabBuilder() {
+        return net.minecraft.world.item.CreativeModeTab.builder(net.minecraft.world.item.CreativeModeTab.Row.TOP, 7 + (nextTabColumn++));
+    }
+
+    private static final java.util.Map<Integer, net.minecraft.network.FriendlyByteBuf> clientBuffers = new java.util.concurrent.ConcurrentHashMap<>();
+
+    public static java.util.OptionalInt openMenuBridge(net.minecraft.world.entity.player.Player player, net.minecraft.world.MenuProvider provider) {
+        if (player instanceof net.minecraft.server.level.ServerPlayer serverPlayer) {
+            if (provider instanceof net.fabricmc.fabric.api.screenhandler.v1.ExtendedScreenHandlerFactory extended) {
+                int syncId = serverPlayer.containerCounter + 1;
+                net.minecraft.network.FriendlyByteBuf buf = new net.minecraft.network.FriendlyByteBuf(io.netty.buffer.Unpooled.buffer());
+                extended.writeScreenOpeningData(serverPlayer, buf);
+                clientBuffers.put(syncId, buf);
+                return serverPlayer.openMenu(provider);
+            }
+        }
+        return player.openMenu(provider);
+    }
+
+    public static net.minecraft.network.FriendlyByteBuf getAndRemoveClientBuffer(int syncId) {
+        return clientBuffers.remove(syncId);
+    }
+
+    static {
+        net.chainloader.loader.core.gui.EarlyLoadingScreen.getInstance().log("Capabilities", "Initializing EventBridgeHelper capability & render registry...");
+        
+        // Register Forge Energy Storage capability provider to Core Capability Bridge
+        net.chainloader.loader.core.gui.EarlyLoadingScreen.getInstance().log("Capabilities", "Registering Forge IEnergyStorage capability adapter...");
+        net.chainloader.loader.core.capability.ChainCapabilityBridge.registerEnergyProvider("forge_compat", (level, pos, state, be, side) -> {
+            if (be instanceof net.minecraftforge.common.capabilities.ICapabilityProvider) {
+                net.minecraftforge.common.util.LazyOptional<net.minecraftforge.energy.IEnergyStorage> cap = 
+                    ((net.minecraftforge.common.capabilities.ICapabilityProvider) be).getCapability(
+                        net.minecraftforge.energy.CapabilityEnergy.ENERGY,
+                        (net.minecraft.core.Direction) side
+                    );
+                if (cap.isPresent()) {
+                    return new net.chainloader.loader.compat.bridge.capability.CoreEnergyStorageAdapter(cap.orElseThrow());
+                }
+            }
+            return null;
+        });
+
+        // Register Fabric Energy Storage capability provider to Core Capability Bridge
+        net.chainloader.loader.core.gui.EarlyLoadingScreen.getInstance().log("Capabilities", "Registering Fabric Reborn Energy capability adapter...");
+        net.chainloader.loader.core.capability.ChainCapabilityBridge.registerEnergyProvider("fabric_compat", (level, pos, state, be, side) -> {
+            if (be instanceof team.reborn.energy.api.EnergyStorage) {
+                return new net.chainloader.loader.compat.bridge.capability.FabricEnergyStorageCoreAdapter((team.reborn.energy.api.EnergyStorage) be);
+            }
+            return null;
+        });
+    }
+
+    private static void registerPayloadHandlers(java.util.Set<Object> buses) {
+        for (Object bus : buses) {
+            if (bus instanceof net.neoforged.bus.api.IEventBus) {
+                net.neoforged.bus.api.IEventBus neoforgeBus = (net.neoforged.bus.api.IEventBus) bus;
+                neoforgeBus.addListener(
+                    net.neoforged.bus.api.EventPriority.NORMAL,
+                    net.neoforged.neoforge.network.event.RegisterPayloadHandlersEvent.class,
+                    (java.util.function.Consumer<net.neoforged.neoforge.network.event.RegisterPayloadHandlersEvent>) event -> {
+                        System.out.println("[EventBridgeHelper] Received RegisterPayloadHandlersEvent on mod bus: " + neoforgeBus);
+                        
+                        // Register all ClientPlayNetworking global receivers
+                        for (net.minecraft.resources.ResourceLocation channelId : net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking.getGlobalReceivers()) {
+                            net.neoforged.neoforge.network.registration.PayloadRegistrar registrar = event.registrar(channelId.getNamespace());
+                            registerChannel(registrar, channelId);
+                        }
+                        
+                        // Register all ServerPlayNetworking global receivers
+                        for (net.minecraft.resources.ResourceLocation channelId : net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking.getGlobalReceivers()) {
+                            net.neoforged.neoforge.network.registration.PayloadRegistrar registrar = event.registrar(channelId.getNamespace());
+                            registerChannel(registrar, channelId);
+                        }
+
+                        // Register all discovered channels from ModScanner
+                        for (String channelStr : net.chainloader.loader.core.ModScanner.getDiscoveredPacketChannels()) {
+                            int colonIdx = channelStr.indexOf(':');
+                            if (colonIdx > 0 && colonIdx < channelStr.length() - 1) {
+                                net.minecraft.resources.ResourceLocation channelId = 
+                                    net.minecraft.resources.ResourceLocation.fromNamespaceAndPath(
+                                        channelStr.substring(0, colonIdx), 
+                                        channelStr.substring(colonIdx + 1)
+                                    );
+                                if (channelId != null) {
+                                    net.neoforged.neoforge.network.registration.PayloadRegistrar registrar = event.registrar(channelId.getNamespace());
+                                    registerChannel(registrar, channelId);
+                                }
+                            }
+                        }
+                    }
+                );
+
+                // Register Capabilities for native NeoForge compatibility
+                neoforgeBus.addListener(
+                    net.neoforged.bus.api.EventPriority.NORMAL,
+                    net.neoforged.neoforge.capabilities.RegisterCapabilitiesEvent.class,
+                    (java.util.function.Consumer<net.neoforged.neoforge.capabilities.RegisterCapabilitiesEvent>) event -> {
+                        System.out.println("[EventBridgeHelper] Received RegisterCapabilitiesEvent on mod bus: " + neoforgeBus);
+                        
+                        // Expose core energy to native NeoForge
+                        event.registerBlock(
+                            net.neoforged.neoforge.capabilities.Capabilities.Energy.BLOCK,
+                            (level, pos, state, be, side) -> {
+                                if (be != null) {
+                                    net.chainloader.loader.core.capability.ChainEnergyStorage coreEnergy = 
+                                        net.chainloader.loader.core.capability.ChainCapabilityBridge.queryEnergy(level, pos, state, be, side);
+                                    if (coreEnergy != null) {
+                                        return new net.chainloader.loader.compat.bridge.capability.NeoForgeEnergyStorageAdapter(coreEnergy);
+                                    }
+                                }
+                                return null;
+                            }
+                        );
+                    }
+                );
+
+                // Register Client Item Extensions for custom item renderers compatibility
+                neoforgeBus.addListener(
+                    net.neoforged.bus.api.EventPriority.NORMAL,
+                    net.neoforged.neoforge.client.extensions.common.RegisterClientExtensionsEvent.class,
+                    (java.util.function.Consumer<net.neoforged.neoforge.client.extensions.common.RegisterClientExtensionsEvent>) event -> {
+                        System.out.println("[EventBridgeHelper] Received RegisterClientExtensionsEvent on mod bus: " + neoforgeBus);
+                        
+                        // We register custom client extensions for any item that has a registered ChainItemRenderer in Core Render Bridge
+                        net.minecraft.core.Registry<net.minecraft.world.item.Item> itemReg = (net.minecraft.core.Registry<net.minecraft.world.item.Item>) 
+                            net.minecraft.core.registries.BuiltInRegistries.REGISTRY.get(new net.minecraft.resources.ResourceLocation("minecraft", "item"));
+                        if (itemReg != null) {
+                            try {
+                                java.lang.Iterable<?> iterable = (java.lang.Iterable<?>) itemReg;
+                                for (Object itemObj : iterable) {
+                                    net.minecraft.world.item.Item item = (net.minecraft.world.item.Item) itemObj;
+                                    net.minecraft.resources.ResourceLocation itemId = null;
+                                    try {
+                                        itemId = (net.minecraft.resources.ResourceLocation) itemReg.getClass().getMethod("getKey", Object.class).invoke(itemReg, item);
+                                    } catch (Throwable t) {
+                                        try {
+                                            java.util.Optional<?> opt = (java.util.Optional<?>) itemReg.getClass().getMethod("getResourceKey", Object.class).invoke(itemReg, item);
+                                            if (opt.isPresent()) {
+                                                Object key = opt.get();
+                                                itemId = (net.minecraft.resources.ResourceLocation) key.getClass().getMethod("location").invoke(key);
+                                            }
+                                        } catch (Throwable t2) {}
+                                    }
+                                    if (itemId != null) {
+                                        net.chainloader.loader.core.render.ChainItemRenderer renderer = 
+                                            net.chainloader.loader.core.render.ChainRenderBridge.getItemRenderer(itemId.toString());
+                                        if (renderer != null) {
+                                            System.out.println("[EventBridgeHelper] Registering native ClientItemExtension for: " + itemId);
+                                            event.registerItem(new net.chainloader.loader.compat.bridge.render.NeoForgeClientItemExtensions(renderer), item);
+                                        }
+                                    }
+                                }
+                            } catch (Throwable t) {
+                                System.err.println("[EventBridgeHelper] Failed to register client item extensions:");
+                                t.printStackTrace();
+                            }
+                        }
+                    }
+                );
+            }
+        }
+    }
+
+    public static Object getBlockEntityRenderDispatcher() {
+        try {
+            net.minecraft.client.Minecraft mc = net.minecraft.client.Minecraft.getInstance();
+            for (java.lang.reflect.Method m : mc.getClass().getMethods()) {
+                if (m.getReturnType().getName().contains("BlockEntityRenderDispatcher")) {
+                    return m.invoke(mc);
+                }
+            }
+        } catch (Throwable t) {}
+        return null;
+    }
+
+    public static Object getEntityModels() {
+        try {
+            net.minecraft.client.Minecraft mc = net.minecraft.client.Minecraft.getInstance();
+            for (java.lang.reflect.Method m : mc.getClass().getMethods()) {
+                if (m.getReturnType().getName().contains("EntityModelSet")) {
+                    return m.invoke(mc);
+                }
+            }
+        } catch (Throwable t) {}
+        return null;
+    }
+
+    private static final java.util.Set<net.minecraft.resources.ResourceLocation> REGISTERED_CHANNELS = java.util.concurrent.ConcurrentHashMap.newKeySet();
+    private static final java.util.Set<net.minecraft.resources.ResourceLocation> REGISTERED_NEOFORGE_CHANNELS = java.util.concurrent.ConcurrentHashMap.newKeySet();
+    private static final java.util.Map<Object, java.util.concurrent.ConcurrentHashMap<net.minecraft.resources.ResourceLocation, Object>> codecInstances = new java.util.concurrent.ConcurrentHashMap<>();
+
+    public static void registerCustomPacketPayloadCodecInstance(Object codecInstance, java.util.Map<?, ?> map) {
+        System.out.println("[EventBridgeHelper] Registering CustomPacketPayload$1 codec instance: " + codecInstance);
+        java.util.concurrent.ConcurrentHashMap<net.minecraft.resources.ResourceLocation, Object> mutableMap = new java.util.concurrent.ConcurrentHashMap<>();
+        for (java.util.Map.Entry<?, ?> entry : map.entrySet()) {
+            mutableMap.put((net.minecraft.resources.ResourceLocation) entry.getKey(), entry.getValue());
+        }
+        
+        // Register any already-known custom channels
+        for (net.minecraft.resources.ResourceLocation channelId : REGISTERED_CHANNELS) {
+            mutableMap.put(channelId, ChainloaderPayload.STREAM_CODEC(channelId));
+        }
+        
+        try {
+            java.lang.reflect.Field mapField = null;
+            Class<?> clazz = codecInstance.getClass();
+            try {
+                mapField = clazz.getDeclaredField("a");
+            } catch (NoSuchFieldException e) {
+                // Try obfuscated or mapped names
+                for (java.lang.reflect.Field f : clazz.getDeclaredFields()) {
+                    if (java.util.Map.class.isAssignableFrom(f.getType())) {
+                        mapField = f;
+                        break;
+                    }
+                }
+            }
+            if (mapField != null) {
+                mapField.setAccessible(true);
+                mapField.set(codecInstance, mutableMap);
+                codecInstances.put(codecInstance, mutableMap);
+                System.out.println("[EventBridgeHelper] Successfully replaced CustomPacketPayload$1 map field with mutable ConcurrentHashMap copy. Size: " + mutableMap.size());
+            } else {
+                System.err.println("[EventBridgeHelper] Failed to find Map field in CustomPacketPayload$1 class " + clazz.getName());
+            }
+        } catch (Throwable t) {
+            System.err.println("[EventBridgeHelper] Failed to replace CustomPacketPayload$1 map field:");
             t.printStackTrace();
         }
+    }
+
+    public static void ensureChannelRegistered(net.minecraft.resources.ResourceLocation channelId) {
+        if (REGISTERED_CHANNELS.add(channelId)) {
+            System.out.println("[EventBridgeHelper] Dynamically registering custom payload channel on the fly: " + channelId);
+            for (java.util.concurrent.ConcurrentHashMap<net.minecraft.resources.ResourceLocation, Object> map : codecInstances.values()) {
+                map.put(channelId, ChainloaderPayload.STREAM_CODEC(channelId));
+            }
+        }
+    }
+
+    private static void registerChannel(net.neoforged.neoforge.network.registration.PayloadRegistrar registrar, net.minecraft.resources.ResourceLocation channelId) {
+        ensureChannelRegistered(channelId);
+        if (!REGISTERED_NEOFORGE_CHANNELS.add(channelId)) {
+            return;
+        }
+        System.out.println("[EventBridgeHelper] Dynamically registering custom payload channel on NeoForge: " + channelId);
+        
+        net.minecraft.network.protocol.common.custom.CustomPacketPayload.Type<ChainloaderPayload> payloadType = 
+            new net.minecraft.network.protocol.common.custom.CustomPacketPayload.Type<>(channelId);
+        
+        registrar.playBidirectional(
+            payloadType,
+            ChainloaderPayload.STREAM_CODEC(channelId),
+            (payload, context) -> {
+                boolean isClient = context.flow() == net.minecraft.network.protocol.PacketFlow.CLIENTBOUND;
+                
+                context.enqueueWork(() -> {
+                    try {
+                        net.minecraft.network.FriendlyByteBuf buf = 
+                            new net.minecraft.network.FriendlyByteBuf(io.netty.buffer.Unpooled.wrappedBuffer(payload.data()));
+                        
+                        if (isClient) {
+                            if (net.neoforged.fml.loading.FMLEnvironment.dist.isClient()) {
+                                ClientPayloadHandlerHelper.receiveClientPayload(channelId, buf);
+                            }
+                        } else {
+                            net.minecraft.server.level.ServerPlayer player = (net.minecraft.server.level.ServerPlayer) context.player();
+                            net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking.PlayChannelHandler handler = 
+                                net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking.getGlobalReceiver(channelId);
+                            if (handler != null) {
+                                handler.receive(player.server, player, player.connection, buf, null);
+                            } else {
+                                System.err.println("[EventBridgeHelper] No ServerPlayNetworking receiver registered for channel: " + channelId);
+                            }
+                        }
+                    } catch (Throwable t) {
+                        System.err.println("[EventBridgeHelper] Failed to process payload for channel " + channelId + ":");
+                        t.printStackTrace();
+                    }
+                });
+            }
+        );
+    }
+
+    private static class ClientPayloadHandlerHelper {
+        static void receiveClientPayload(net.minecraft.resources.ResourceLocation channelId, net.minecraft.network.FriendlyByteBuf buf) {
+            net.minecraft.client.Minecraft client = net.minecraft.client.Minecraft.getInstance();
+            net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking.PlayChannelHandler handler = 
+                net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking.getGlobalReceiver(channelId);
+            if (handler != null) {
+                handler.receive(client, client.getConnection(), buf, null);
+            } else {
+                System.err.println("[EventBridgeHelper] No ClientPlayNetworking receiver registered for channel: " + channelId);
+            }
+        }
+    }
+
+    public static final java.lang.ThreadLocal<Object> CURRENT_NBT_PROVIDER = new java.lang.ThreadLocal<>();
+
+    public static Object getCurrentNbtProvider() {
+        return CURRENT_NBT_PROVIDER.get();
+    }
+
+    public static void setCurrentNbtProvider(Object provider) {
+        if (provider == null) {
+            CURRENT_NBT_PROVIDER.remove();
+        } else {
+            CURRENT_NBT_PROVIDER.set(provider);
+        }
+    }
+
+    public static java.util.concurrent.CompletableFuture<Void> enqueueWorkBridge(Object event, Runnable runnable) {
+        runnable.run();
+        return java.util.concurrent.CompletableFuture.completedFuture(null);
+    }
+
+    public static Object instantiateEventReflectively(Class<?> clazz) {
+        try {
+            // Try zero-argument constructor first
+            try {
+                java.lang.reflect.Constructor<?> ctor = clazz.getDeclaredConstructor();
+                ctor.setAccessible(true);
+                return ctor.newInstance();
+            } catch (NoSuchMethodException e) {
+                // Ignore
+            }
+
+            // Find constructor with arguments
+            java.lang.reflect.Constructor<?>[] ctors = clazz.getDeclaredConstructors();
+            if (ctors.length == 0) {
+                return null;
+            }
+            // Sort by parameter count, prefer the one with fewer parameters
+            java.util.Arrays.sort(ctors, (c1, c2) -> Integer.compare(c1.getParameterCount(), c2.getParameterCount()));
+            java.lang.reflect.Constructor<?> ctor = ctors[0];
+            ctor.setAccessible(true);
+            Class<?>[] paramTypes = ctor.getParameterTypes();
+            Object[] args = new Object[paramTypes.length];
+            for (int i = 0; i < paramTypes.length; i++) {
+                Class<?> type = paramTypes[i];
+                if (type.isPrimitive()) {
+                    if (type == boolean.class) args[i] = false;
+                    else if (type == int.class) args[i] = 0;
+                    else if (type == float.class) args[i] = 0.0f;
+                    else if (type == double.class) args[i] = 0.0d;
+                    else if (type == long.class) args[i] = 0L;
+                    else if (type == char.class) args[i] = '\0';
+                    else if (type == short.class) args[i] = (short)0;
+                    else if (type == byte.class) args[i] = (byte)0;
+                } else {
+                    args[i] = null;
+                }
+            }
+            return ctor.newInstance(args);
+        } catch (Throwable t) {
+            System.err.println("[ChainLoader] Failed to reflectively instantiate event class " + clazz.getName() + ":");
+            t.printStackTrace();
+            try {
+                // Fallback to Unsafe allocation
+                java.lang.reflect.Field theUnsafeField = sun.misc.Unsafe.class.getDeclaredField("theUnsafe");
+                theUnsafeField.setAccessible(true);
+                sun.misc.Unsafe unsafe = (sun.misc.Unsafe) theUnsafeField.get(null);
+                return unsafe.allocateInstance(clazz);
+            } catch (Throwable t2) {
+                System.err.println("[ChainLoader] Unsafe fallback failed for event class " + clazz.getName() + ":");
+                t2.printStackTrace();
+            }
+        }
+        return null;
     }
 }

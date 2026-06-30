@@ -140,9 +140,7 @@ public class ChainClassLoader extends URLClassLoader {
         } else {
             System.out.println("[ChainClassLoader] Warning: BytecodeTransformer instance is null in loadClass for " + name);
         }
-        // if (name.contains("minecraft") || name.contains("appleskin") || name.contains("balm") || name.length() < 5) {
-        //     System.out.println("[ChainClassLoader] loadClass: " + name + " -> " + mappedName);
-        // }
+        // System.out.println("[ChainClassLoader] loadClass: " + name + " -> " + mappedName);
 
         // 1. Check delegation rules first, before acquiring lock to avoid deadlocks
         if (shouldDelegateToParent(mappedName)) {

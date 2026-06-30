@@ -6,4 +6,5 @@ import java.util.concurrent.CompletableFuture;
 public interface IPayloadContext {
     CompletableFuture<Void> enqueueWork(Runnable runnable);
     Player player();
+    net.minecraft.network.protocol.PacketFlow flow();
 }
