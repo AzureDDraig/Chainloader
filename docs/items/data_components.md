@@ -74,3 +74,34 @@ During earlier mappings inside `Chainlink1_21_1_Base`, these mappings were align
 2. Mapped the remover `remove` explicitly to obfuscated method `c`.
 
 This alignment prevents legacy code from accidentally removing data components when they simply intend to retrieve them.
+
+---
+
+## 4. Enchantment Components Lookup
+
+Minecraft 1.20.5+ split item enchantments into two separate data components:
+* **`DataComponents.ENCHANTMENTS`**: Stores regular enchantments on weapons, tools, and armor.
+* **`DataComponents.STORED_ENCHANTMENTS`**: Stores stored enchantments on enchanted books (`EnchantedBookItem`).
+
+To ensure that legacy mods querying item stack enchantments (e.g., tooltip/description mods) receive the correct map of enchantments regardless of whether the item is a book or a tool, `EventBridgeHelper.getEnchantments(ItemStack)` dynamically queries both components:
+
+```java
+public static java.util.Map<Object, Integer> getEnchantments(ItemStack stack) {
+    java.util.Map<Object, Integer> map = new java.util.HashMap<>();
+    if (stack == null) return map;
+    
+    // 1. Read regular ENCHANTMENTS
+    ItemEnchantments enchants = stack.getEnchantments();
+    if (enchants != null) {
+        // Parse and populate into compatibility map
+    }
+    
+    // 2. Read STORED_ENCHANTMENTS (for Enchanted Books)
+    ItemEnchantments stored = stack.get(DataComponents.STORED_ENCHANTMENTS);
+    if (stored != null) {
+        // Parse and populate into compatibility map
+    }
+    return map;
+}
+```
+

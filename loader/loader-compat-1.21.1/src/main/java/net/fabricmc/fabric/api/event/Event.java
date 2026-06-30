@@ -77,6 +77,17 @@ public class Event<T> {
                                 if (actual instanceof IllegalArgumentException || 
                                     actual instanceof AbstractMethodError || 
                                     actual instanceof NoSuchMethodError) {
+                                    System.err.println("[ChainLoader Event Diagnostic] Method invocation failed: " + actual);
+                                    System.err.println("  Method: " + method + " (declaring class: " + method.getDeclaringClass().getName() + ", loader: " + method.getDeclaringClass().getClassLoader() + ")");
+                                    System.err.println("  Listener: " + listener.getClass().getName() + " (loader: " + listener.getClass().getClassLoader() + ")");
+                                    System.err.println("  Declared Methods on Listener:");
+                                    for (java.lang.reflect.Method m : listener.getClass().getDeclaredMethods()) {
+                                        System.err.println("    - " + m);
+                                    }
+                                    System.err.println("  Interfaces implemented by Listener:");
+                                    for (Class<?> listenerIface : listener.getClass().getInterfaces()) {
+                                        System.err.println("    - " + listenerIface.getName() + " (loader: " + listenerIface.getClassLoader() + ")");
+                                    }
                                     // Try to adapt arguments for other methods on the listener class with same name
                                     boolean invoked = false;
                                     Class<?> current = listener.getClass();
@@ -85,10 +96,15 @@ public class Event<T> {
                                             if (m.getName().equals(method.getName())) {
                                                 Object[] adaptedArgs = adaptArguments(args, m.getParameterTypes());
                                                 if (adaptedArgs != null) {
-                                                    m.setAccessible(true);
-                                                    lastResult = m.invoke(listener, adaptedArgs);
-                                                    invoked = true;
-                                                    break;
+                                                    try {
+                                                        m.setAccessible(true);
+                                                        lastResult = m.invoke(listener, adaptedArgs);
+                                                        invoked = true;
+                                                        break;
+                                                    } catch (Throwable ex) {
+                                                        System.err.println("[Event] Failed to invoke adapted method: " + ex);
+                                                        ex.printStackTrace();
+                                                    }
                                                 }
                                             }
                                         }
@@ -139,10 +155,10 @@ public class Event<T> {
                 }
             }
             if (!found) {
+                System.err.println("[Event Debug] Parameter mismatch at index " + i + ": expected " + pType.getName() + ", remaining args starting at index " + (argIdx - 1));
                 return null;
             }
         }
         return result;
     }
 }
-

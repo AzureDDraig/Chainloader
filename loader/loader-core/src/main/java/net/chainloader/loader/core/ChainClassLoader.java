@@ -252,6 +252,9 @@ public class ChainClassLoader extends URLClassLoader {
         String resourcePath = name.replace('.', '/') + ".class";
         URL classResource = findResource(resourcePath);
         if (classResource == null) {
+            classResource = getParent().getResource(resourcePath);
+        }
+        if (classResource == null) {
             if (DEBUG) {
                 System.err.println("[ChainClassLoader DEBUG] findResource returned null for: " + resourcePath);
                 System.err.println("[ChainClassLoader DEBUG] URLs in classloader:");
@@ -349,5 +352,10 @@ public class ChainClassLoader extends URLClassLoader {
         } catch (Exception e) {
             return new CodeSource(classResource, (CodeSigner[]) null);
         }
+    }
+
+    public Class<?> defineDynamicClass(String name, byte[] bytes) {
+        definePackageForClass(name);
+        return defineClass(name, bytes, 0, bytes.length);
     }
 }

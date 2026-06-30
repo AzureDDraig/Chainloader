@@ -261,6 +261,13 @@ public final class ModScanner {
                                     }
                                 }
                             }
+                        } else if (s.length() >= 2 && s.length() <= 64 && s.matches("^[a-z0-9_.-/]+$")) {
+                            // Synthesize potential channel for this mod ID
+                            if (!s.equals("minecraft") && !s.equals("neoforge") && !s.equals("forge") && !s.equals("fabric")) {
+                                String synthesized = resolvedModId + ":" + s;
+                                Logging.debug("Scanning", "  Synthesized potential packet channel: %s", synthesized);
+                                discoveredPacketChannels.add(synthesized);
+                            }
                         }
                     }
 

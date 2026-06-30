@@ -199,6 +199,7 @@ public class HeadlessSimulator {
             System.out.println("==================================================");
             System.out.println("  Simulator Completed Successfully!");
             System.out.println("==================================================");
+            System.exit(0);
 
         } catch (Throwable t) {
             System.err.println("\n[ERROR] Headless Simulation Failed!");
@@ -1477,6 +1478,18 @@ public class HeadlessSimulator {
             java.lang.reflect.Method registerRecipesMethod = jeiAddonClass.getMethod("registerRecipes", recipeRegClass);
             registerRecipesMethod.invoke(jeiAddon, mockRecipeReg);
             System.out.println("[SIMULATOR] registerRecipes invoked. Registered recipes count: " + registeredRecipes.size());
+
+            // Force load and invoke FurnaceFuelCategory.createSmeltCountText to debug method mapping
+            try {
+                System.out.println("[SIMULATOR] Force loading FurnaceFuelCategory class...");
+                Class<?> fuelCatClass = classLoader.loadClass("mezz.jei.library.plugins.vanilla.cooking.fuel.FurnaceFuelCategory");
+                System.out.println("[SIMULATOR] Invoking FurnaceFuelCategory.createSmeltCountText(100)...");
+                Object component = fuelCatClass.getMethod("createSmeltCountText", int.class).invoke(null, 100);
+                System.out.println("[SIMULATOR] Successfully returned component: " + component);
+            } catch (Throwable t) {
+                System.err.println("[SIMULATOR] Failed during FurnaceFuelCategory check:");
+                t.printStackTrace();
+            }
 
         } catch (Throwable t) {
             System.err.println("[SIMULATOR] Failed to simulate JEI addon registration/tabs:");

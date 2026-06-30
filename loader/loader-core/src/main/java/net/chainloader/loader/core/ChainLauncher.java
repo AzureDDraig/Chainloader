@@ -35,6 +35,21 @@ public class ChainLauncher {
     public static void main(String[] args) {
         Logging.initialize();
 
+        // Capture uncaught exceptions and log them to the early loading screen
+        Thread.setDefaultUncaughtExceptionHandler((thread, throwable) -> {
+            net.chainloader.loader.core.gui.EarlyLoadingScreen.getInstance().logError(
+                "ChainLoader", 
+                "Uncaught crash in thread '" + thread.getName() + "': " + throwable.toString(), 
+                throwable
+            );
+            System.err.println("Uncaught exception in thread \"" + thread.getName() + "\":");
+            throwable.printStackTrace();
+        });
+
+        System.setProperty("sun.java2d.noddraw", "true");
+        System.setProperty("sun.java2d.opengl", "false");
+        System.setProperty("sun.java2d.d3d", "false");
+
         System.out.println("==================================================");
         System.out.println("  ChainLoader Modloader Core - Version " + VERSION);
         System.out.println("  Bootstrapping game initialization sequence...");

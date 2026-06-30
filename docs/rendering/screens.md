@@ -111,3 +111,55 @@ public static void tickWidget(Object widget) {
 }
 ```
 This tick remapping ensures text fields and scrollable panels update their cursor flashes and scroll inputs correctly.
+
+---
+
+## 5. AWT / GLFW Resize Conflict Mitigation
+
+When early loading screens are rendered using Java AWT/Swing in the same JVM process, AWT initializes its native graphics pipeline (DirectDraw, Direct3D, or OpenGL for Java2D hardware acceleration). 
+
+This can clash with Minecraft's GLFW native OpenGL context when resizing the game window on Windows, causing Access Violations in graphics drivers (`atio6axx.dll`, `nvoglv64.dll`, or `opengl32.dll`) and hard JVM crashes.
+
+To mitigate this, ChainLoader does two things:
+1. Disables hardware acceleration for Java2D at startup inside `ChainLauncher.java`, forcing the Swing early loading screen window to render via CPU/software:
+```java
+System.setProperty("sun.java2d.noddraw", "true");
+System.setProperty("sun.java2d.opengl", "false");
+System.setProperty("sun.java2d.d3d", "false");
+```
+2. Disposes the Swing early loading screen window completely during control handover in `EarlyLoadingScreen.close()`:
+```java
+window.setVisible(false);
+window.dispose();
+window = null;
+```
+This terminates all native AWT peer contexts and threads, ensuring no AWT contexts are running concurrently with GLFW when the game window is resized.
+
+---
+
+## 6. Component.translatable Method Overloads Remapping
+
+In modern Minecraft versions (1.20.5+), the static helper method `Component.translatable` has multiple overloads:
+* `translatable(String)` -> maps to obfuscated method `c(String)`
+* `translatable(String, Object...)` -> maps to obfuscated method `a(String, Object[])`
+
+Legacy mods (or third-party libraries compiled against clean Mojang mappings) call `Component.translatable` under both signatures. If a compat layer unconditionally hardcodes a mapping for the method name `translatable` without verifying the descriptor/signature (e.g. unconditionally remapping `translatable` to `"c"`), the JVM will fail to resolve the varargs overload at runtime, throwing `java.lang.NoSuchMethodError: 'xn wz.c(java.lang.String, java.lang.Object[])'` (as occurred during JEI screen initialization).
+
+ChainLoader's compatibility layers resolve this by checking the bytecode descriptor in the method remapping stage:
+* If the descriptor starts with `(Ljava/lang/String;)`, it remaps to `c`.
+* Otherwise, if it has arguments (varargs) e.g., `(Ljava/lang/String;[Ljava/lang/Object;)`, it maps to `a`.
+
+---
+
+## 7. Creative Tabs Pagination & Layout Remapping
+
+Minecraft 1.21.1 expects a static set of 14 creative tabs arranged in a fixed layout of 6 columns across `TOP` and `BOTTOM` rows on a single page. It does not support multiple pages out of the box, meaning custom tabs registered by mods overflow off-screen or render invisibly.
+
+To support paginated creative tabs for mods, ChainLoader implements a dynamic layout overrides and pagination system:
+1. **Redirecting CreativeModeTabs.tabs()**: Overwrites the static `tabs()` method inside `CreativeModeTabs` (`ctb`) to call `EventBridgeHelper.getCreativeModeTabs()`. This returns only the tabs visible on the active page (Page 0 contains vanilla tabs; Page 1+ contains modded tabs, with 12 tabs per page).
+2. **Tab Row/Column Overrides**: Intercepts `getRow()` (`g()`) and `getColumn()` (`f()`) inside `CreativeModeTab` (`cta`) to invoke `EventBridgeHelper.getCreativeTabRow(tab)` and `EventBridgeHelper.getCreativeTabColumn(tab)` dynamically. Modded tabs are placed on columns `0` to `5` on `TOP`/`BOTTOM` rows matching their relative index on the current page.
+3. **Screen Rendering & Click Hooks**:
+   - Injects rendering code at the end of `CreativeModeInventoryScreen.render()` to call `EventBridgeHelper.onCreativeScreenRender()` to draw previous, page number, and next page controls (`< Page X/Y >`) above the GUI.
+   - Injects a mouse click interceptor at the start of `CreativeModeInventoryScreen.mouseClicked()` to process page navigation buttons, decrement/increment the page counter, and invoke `updateActiveTab()` to refresh the screen layout.
+
+

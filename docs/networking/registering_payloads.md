@@ -104,3 +104,39 @@ for (String channelStr : net.chainloader.loader.core.ModScanner.getDiscoveredPac
 }
 ```
 This hybrid approach guarantees that both statically declared channels and dynamically registered receivers are correctly registered within NeoForge's frozen registrar before game load.
+
+---
+
+## 5. Unique Class-Per-Payload Constraint (1.20.5+ / 1.21)
+
+In Minecraft 1.20.5 and newer, Mojang's and NeoForge's packet systems index playbound custom payload packets by their concrete Java class:
+```java
+Map<Class<? extends CustomPacketPayload>, PayloadConfiguration>
+```
+If multiple packet channels (e.g. `waystones:known_waystones` and `waystones:waystone_update`) utilize the same class representation (like a generic `ChainloaderPayload` container), only the last registered payload handler configuration is preserved, overwriting any previous registrations. Consequently, clientbound packets sent for overwritten channels trigger:
+`[Render thread/WARN]: Unknown custom packet payload: [channel]`
+
+### Solution: Dynamic ASM Class Generation
+
+To bypass this class-uniqueness restriction, ChainLoader dynamically compiles and loads a unique subclass of `CustomPacketPayload` for each discovered packet channel on-the-fly at runtime.
+
+Inside `EventBridgeHelper.java`:
+1.  **Class Generation**: When a channel is registered via `ensureChannelRegistered(channelId)`, ChainLoader generates raw class bytes utilizing ASM ClassWriter:
+    *   **Class Name**: `net.chainloader.loader.compat.bridge.DynamicPayload_[namespace]_[path]`
+    *   **Dynamic Class Name Mapping**: To avoid `NoClassDefFoundError` in production where Minecraft classes are obfuscated (e.g. `net/minecraft/resources/ResourceLocation` mapped to `akr`), ChainLoader dynamically translates all referenced class names to their runtime mapped names using the `BytecodeTransformer` mapping registry (`BytecodeTransformer.getInstance().map(deobfName)`).
+    *   **Implemented Interface**: The runtime mapped class name for `net.minecraft.network.protocol.common.custom.CustomPacketPayload`.
+    *   **Fields**: `private final byte[] data`
+    *   **Methods**: Getter `data()`, Constructor `(byte[])`, and `type()` returning `new CustomPacketPayload.Type<>(channelId)` (utilizing the mapped names for `CustomPacketPayload$Type` and `ResourceLocation`).
+2.  **ClassLoader Injection**: The class bytes are injected into the classloader via `loader.defineDynamicClass(className, bytes)` inside `ChainClassLoader`.
+3.  **Generic Codec Generation**: A reflection-based `StreamCodec` is instantiated to serialize and deserialize the dynamic class instances dynamically:
+    ```java
+    net.minecraft.network.codec.StreamCodec.of(
+        (buf, payload) -> buf.writeByteArray(payload.data()),
+        buf -> constructor.newInstance(buf.readByteArray())
+    )
+    ```
+4.  **NeoForge Registration**: The uniquely generated class type, generic codec, and payload handler are then passed to `registrar.playBidirectional()`.
+
+This guarantees that every channel has its own distinct type signature in the JVM, fully satisfying NeoForge's class-per-payload restriction and ensuring all mod network interactions succeed.
+
+

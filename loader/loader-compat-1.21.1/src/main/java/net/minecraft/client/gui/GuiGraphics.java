@@ -18,6 +18,9 @@ public class GuiGraphics {
     public void fill(int minX, int minY, int maxX, int maxY, int color) {
     }
 
+    public void blit(net.minecraft.resources.ResourceLocation texture, int x, int y, int u, int v, int width, int height) {
+    }
+
     public com.mojang.blaze3d.vertex.PoseStack pose() {
         return null;
     }

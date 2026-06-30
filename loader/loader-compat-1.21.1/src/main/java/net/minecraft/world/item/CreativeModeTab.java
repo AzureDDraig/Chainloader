@@ -45,6 +45,14 @@ public class CreativeModeTab {
         return null;
     }
 
+    public Row g() {
+        return null;
+    }
+
+    public int f() {
+        return 0;
+    }
+
     public static class Builder {
         public Builder title(Component title) {
             return this;

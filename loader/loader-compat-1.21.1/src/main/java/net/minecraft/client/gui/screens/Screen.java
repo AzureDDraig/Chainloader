@@ -10,6 +10,11 @@ public class Screen {
     public int height;
     public java.util.List renderables = new java.util.ArrayList();
     public java.util.List children = new java.util.ArrayList();
+    public net.minecraft.client.Minecraft minecraft;
+
+    public net.minecraft.client.Minecraft getMinecraft() {
+        return minecraft;
+    }
 
     public Screen(net.minecraft.network.chat.Component title) {
         this.title = title;

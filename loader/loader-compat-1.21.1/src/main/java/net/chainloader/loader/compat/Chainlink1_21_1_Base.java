@@ -273,7 +273,12 @@ public abstract class Chainlink1_21_1_Base implements Chainlink {
         }
         if (isClass(owner, "net/minecraft/network/chat/Component", "wz")) {
             if (name.equals("literal")) return "b";
-            if (name.equals("translatable")) return "c";
+            if (name.equals("translatable")) {
+                if (descriptor != null && descriptor.startsWith("(Ljava/lang/String;)")) {
+                    return "c";
+                }
+                return "a";
+            }
             if ((name.equals("getString") || name.equals("a")) && "()Ljava/lang/String;".equals(descriptor)) return "d";
         }
         if (isClass(owner, "net/minecraft/client/gui/GuiGraphics", "fhz")) {
@@ -667,6 +672,12 @@ public abstract class Chainlink1_21_1_Base implements Chainlink {
             return transformPoiTypesAccessor(bytes);
         } else if ("lt".equals(className)) {
             return transformBuiltInRegistries(bytes);
+        } else if ("cta".equals(className) || "net.minecraft.world.item.CreativeModeTab".equals(className)) {
+            return transformCreativeModeTab(bytes);
+        } else if ("ctb".equals(className) || "net.minecraft.world.item.CreativeModeTabs".equals(className)) {
+            return transformCreativeModeTabs(bytes);
+        } else if ("fpi".equals(className) || "net.minecraft.client.gui.screens.inventory.CreativeModeInventoryScreen".equals(className)) {
+            return transformCreativeModeInventoryScreen(bytes);
         } else if ("fhy".equals(className)) {
             return transformGui(bytes);
         } else if ("cuq".equals(className)) {
@@ -1250,6 +1261,160 @@ public abstract class Chainlink1_21_1_Base implements Chainlink {
                                         false);
                                 }
                                 super.visitMethodInsn(opcode, owner, name, descriptor, isInterface);
+                            }
+                        };
+                    }
+                    return mv;
+                }
+            };
+            cr.accept(cv, 0);
+            return cw.toByteArray();
+        } catch (Exception e) {
+            e.printStackTrace();
+            return bytes;
+        }
+    }
+
+    private byte[] transformCreativeModeTab(byte[] bytes) {
+        try {
+            ClassReader cr = new ClassReader(bytes);
+            ClassWriter cw = new ClassWriter(cr, ClassWriter.COMPUTE_FRAMES);
+            ClassVisitor cv = new ClassVisitor(Opcodes.ASM9, cw) {
+                @Override
+                public MethodVisitor visitMethod(int access, String name, String descriptor, String signature, String[] exceptions) {
+                    MethodVisitor mv = super.visitMethod(access, name, descriptor, signature, exceptions);
+                    if ("g".equals(name) && ("()Lcta$f;".equals(descriptor) || "()Lnet/minecraft/world/item/CreativeModeTab$Row;".equals(descriptor))) {
+                        System.out.println("[Chainlink 1.21.1 DEBUG] Injecting custom getRow implementation into CreativeModeTab");
+                        return new MethodVisitor(Opcodes.ASM9, null) {
+                            @Override
+                            public void visitCode() {
+                                mv.visitCode();
+                                mv.visitVarInsn(Opcodes.ALOAD, 0);
+                                mv.visitMethodInsn(Opcodes.INVOKESTATIC, 
+                                    "net/chainloader/loader/compat/bridge/EventBridgeHelper", 
+                                    "getCreativeTabRow", 
+                                    "(Ljava/lang/Object;)Ljava/lang/Object;", 
+                                    false);
+                                mv.visitTypeInsn(Opcodes.CHECKCAST, "net/minecraft/world/item/CreativeModeTab$Row");
+                                mv.visitInsn(Opcodes.ARETURN);
+                                mv.visitMaxs(1, 1);
+                                mv.visitEnd();
+                            }
+                        };
+                    }
+                    if ("f".equals(name) && "()I".equals(descriptor)) {
+                        System.out.println("[Chainlink 1.21.1 DEBUG] Injecting custom getColumn implementation into CreativeModeTab");
+                        return new MethodVisitor(Opcodes.ASM9, null) {
+                            @Override
+                            public void visitCode() {
+                                mv.visitCode();
+                                mv.visitVarInsn(Opcodes.ALOAD, 0);
+                                mv.visitMethodInsn(Opcodes.INVOKESTATIC, 
+                                    "net/chainloader/loader/compat/bridge/EventBridgeHelper", 
+                                    "getCreativeTabColumn", 
+                                    "(Ljava/lang/Object;)I", 
+                                    false);
+                                mv.visitInsn(Opcodes.IRETURN);
+                                mv.visitMaxs(1, 1);
+                                mv.visitEnd();
+                            }
+                        };
+                    }
+                    return mv;
+                }
+            };
+            cr.accept(cv, 0);
+            return cw.toByteArray();
+        } catch (Exception e) {
+            e.printStackTrace();
+            return bytes;
+        }
+    }
+
+    private byte[] transformCreativeModeTabs(byte[] bytes) {
+        try {
+            ClassReader cr = new ClassReader(bytes);
+            ClassWriter cw = new ClassWriter(cr, ClassWriter.COMPUTE_FRAMES);
+            ClassVisitor cv = new ClassVisitor(Opcodes.ASM9, cw) {
+                @Override
+                public MethodVisitor visitMethod(int access, String name, String descriptor, String signature, String[] exceptions) {
+                    MethodVisitor mv = super.visitMethod(access, name, descriptor, signature, exceptions);
+                    if ("c".equals(name) && "()Ljava/util/List;".equals(descriptor)) {
+                        System.out.println("[Chainlink 1.21.1 DEBUG] Injecting custom tabs() implementation into CreativeModeTabs");
+                        return new MethodVisitor(Opcodes.ASM9, null) {
+                            @Override
+                            public void visitCode() {
+                                mv.visitCode();
+                                mv.visitMethodInsn(Opcodes.INVOKESTATIC, 
+                                    "net/chainloader/loader/compat/bridge/EventBridgeHelper", 
+                                    "getCreativeModeTabs", 
+                                    "()Ljava/util/List;", 
+                                    false);
+                                mv.visitInsn(Opcodes.ARETURN);
+                                mv.visitMaxs(1, 0);
+                                mv.visitEnd();
+                            }
+                        };
+                    }
+                    return mv;
+                }
+            };
+            cr.accept(cv, 0);
+            return cw.toByteArray();
+        } catch (Exception e) {
+            e.printStackTrace();
+            return bytes;
+        }
+    }
+
+    private byte[] transformCreativeModeInventoryScreen(byte[] bytes) {
+        try {
+            ClassReader cr = new ClassReader(bytes);
+            ClassWriter cw = new ClassWriter(cr, ClassWriter.COMPUTE_FRAMES);
+            ClassVisitor cv = new ClassVisitor(Opcodes.ASM9, cw) {
+                @Override
+                public MethodVisitor visitMethod(int access, String name, String descriptor, String signature, String[] exceptions) {
+                    MethodVisitor mv = super.visitMethod(access, name, descriptor, signature, exceptions);
+                    if ("a".equals(name) && "(Lfhz;IIF)V".equals(descriptor)) {
+                        System.out.println("[Chainlink 1.21.1 DEBUG] Injecting render hook into CreativeModeInventoryScreen");
+                        return new MethodVisitor(Opcodes.ASM9, mv) {
+                            @Override
+                            public void visitInsn(int opcode) {
+                                if (opcode == Opcodes.RETURN) {
+                                    mv.visitVarInsn(Opcodes.ALOAD, 0);
+                                    mv.visitVarInsn(Opcodes.ALOAD, 1);
+                                    mv.visitVarInsn(Opcodes.ILOAD, 2);
+                                    mv.visitVarInsn(Opcodes.ILOAD, 3);
+                                    mv.visitMethodInsn(Opcodes.INVOKESTATIC, 
+                                        "net/chainloader/loader/compat/bridge/EventBridgeHelper", 
+                                        "onCreativeScreenRender", 
+                                        "(Ljava/lang/Object;Ljava/lang/Object;II)V", 
+                                        false);
+                                }
+                                super.visitInsn(opcode);
+                            }
+                        };
+                    }
+                    if ("a".equals(name) && "(DDI)Z".equals(descriptor)) {
+                        System.out.println("[Chainlink 1.21.1 DEBUG] Injecting mouseClicked hook into CreativeModeInventoryScreen");
+                        return new MethodVisitor(Opcodes.ASM9, mv) {
+                            @Override
+                            public void visitCode() {
+                                mv.visitCode();
+                                mv.visitVarInsn(Opcodes.ALOAD, 0);
+                                mv.visitVarInsn(Opcodes.DLOAD, 1);
+                                mv.visitVarInsn(Opcodes.DLOAD, 3);
+                                mv.visitVarInsn(Opcodes.ILOAD, 5);
+                                mv.visitMethodInsn(Opcodes.INVOKESTATIC, 
+                                    "net/chainloader/loader/compat/bridge/EventBridgeHelper", 
+                                    "onCreativeScreenMouseClicked", 
+                                    "(Ljava/lang/Object;DDI)Z", 
+                                    false);
+                                org.objectweb.asm.Label labelProceed = new org.objectweb.asm.Label();
+                                mv.visitJumpInsn(Opcodes.IFEQ, labelProceed);
+                                mv.visitInsn(Opcodes.ICONST_1);
+                                mv.visitInsn(Opcodes.IRETURN);
+                                mv.visitLabel(labelProceed);
                             }
                         };
                     }
@@ -2741,15 +2906,20 @@ public abstract class Chainlink1_21_1_Base implements Chainlink {
                                 isInterface = false;
                             }
 
-                            boolean isEnchantmentHelper = "net/minecraft/world/item/enchantment/EnchantmentHelper".equals(owner) || "dae".equals(owner);
+                            boolean isEnchantmentHelper = "net/minecraft/world/item/enchantment/EnchantmentHelper".equals(owner) || 
+                                                          "net/minecraft/class_1890".equals(owner) || 
+                                                          "dae".equals(owner);
                             boolean isGetEnchantments = "method_8222".equals(methodName) || "getEnchantments".equals(methodName);
                             if (isEnchantmentHelper && isGetEnchantments && methodDesc.endsWith(")Ljava/util/Map;")) {
                                 opcode = Opcodes.INVOKESTATIC;
                                 owner = "net/chainloader/loader/compat/bridge/EventBridgeHelper";
                                 methodName = "getEnchantments";
-                                methodDesc = "(Lcuq;)Ljava/util/Map;";
+                                int start = methodDesc.indexOf('L');
+                                int end = methodDesc.indexOf(';');
+                                String stackType = methodDesc.substring(start + 1, end);
+                                methodDesc = "(L" + stackType + ";)Ljava/util/Map;";
                                 isInterface = false;
-                                System.out.println("[Chainlink 1.21.1 DEBUG] Redirected EnchantmentHelper.getEnchantments to EventBridgeHelper.getEnchantments");
+                                System.out.println("[Chainlink 1.21.1 DEBUG] Redirected EnchantmentHelper.getEnchantments to EventBridgeHelper.getEnchantments with descriptor: " + methodDesc);
                             } else if ("com/mojang/serialization/DataResult".equals(owner) && "getOrThrow".equals(methodName) && "(ZLjava/util/function/Consumer;)Ljava/lang/Object;".equals(methodDesc)) {
                                 opcode = Opcodes.INVOKESTATIC;
                                 owner = "net/chainloader/loader/compat/lib/DataResultCompatBridge";

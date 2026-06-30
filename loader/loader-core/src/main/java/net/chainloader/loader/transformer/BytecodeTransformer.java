@@ -39,6 +39,9 @@ public class BytecodeTransformer {
     public static void setClassLoader(ClassLoader classLoader) {
         activeClassLoader = classLoader;
     }
+    public static ClassLoader getClassLoader() {
+        return activeClassLoader;
+    }
 
     private final Map<String, String> INTERMEDIARY_METHOD_MAPPINGS = new ConcurrentHashMap<>();
     private final Map<String, String> INTERMEDIARY_FIELD_MAPPINGS = new ConcurrentHashMap<>();

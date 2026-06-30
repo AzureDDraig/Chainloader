@@ -344,6 +344,14 @@ public class EventBridgeHelper {
     }
 
     public static void onScreenRenderPre(Screen screen, GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
+        // Fire NeoForge ScreenEvent.Render.Pre
+        net.neoforged.neoforge.common.NeoForge.EVENT_BUS.post(
+            new net.neoforged.neoforge.client.event.ScreenEvent.Render.Pre(screen, graphics, mouseX, mouseY, partialTick)
+        );
+        // Fire Forge ScreenEvent.Render.Pre
+        net.minecraftforge.common.MinecraftForge.EVENT_BUS.post(
+            new net.minecraftforge.client.event.ScreenEvent.Render.Pre(screen, graphics, mouseX, mouseY, partialTick)
+        );
         // Fire Fabric ScreenEvents.beforeRender
         try {
             net.fabricmc.fabric.api.client.screen.v1.ScreenEvents.beforeRender(screen).invoker().beforeRender(screen, graphics, mouseX, mouseY, partialTick);
@@ -1131,45 +1139,53 @@ public class EventBridgeHelper {
         }
 
         // Register Entity Renderers captured in the event using reflection
-        for (java.util.Map.Entry<net.minecraft.world.entity.EntityType<?>, net.minecraft.client.renderer.entity.EntityRendererProvider<?>> entry : registerRenderersEvent.getEntityRenderers().entrySet()) {
-            try {
-                System.out.println("[ChainLoader] Registering NeoForge entity renderer for: " + entry.getKey());
-                Class<?> renderersClass = Class.forName("net.minecraft.client.renderer.entity.EntityRenderers");
-                java.lang.reflect.Method registerMethod;
+        if (registerRenderersEvent instanceof net.neoforged.neoforge.client.event.EntityRenderersEvent.RegisterRenderers) {
+            net.neoforged.neoforge.client.event.EntityRenderersEvent.RegisterRenderers reg = 
+                (net.neoforged.neoforge.client.event.EntityRenderersEvent.RegisterRenderers) registerRenderersEvent;
+            for (java.util.Map.Entry<net.minecraft.world.entity.EntityType<?>, net.minecraft.client.renderer.entity.EntityRendererProvider<?>> entry : reg.getEntityRenderers().entrySet()) {
                 try {
-                    registerMethod = renderersClass.getMethod("register", net.minecraft.world.entity.EntityType.class, net.minecraft.client.renderer.entity.EntityRendererProvider.class);
-                } catch (NoSuchMethodException e) {
-                    registerMethod = renderersClass.getMethod("a", net.minecraft.world.entity.EntityType.class, net.minecraft.client.renderer.entity.EntityRendererProvider.class);
+                    System.out.println("[ChainLoader] Registering NeoForge entity renderer for: " + entry.getKey());
+                    Class<?> renderersClass = Class.forName("net.minecraft.client.renderer.entity.EntityRenderers");
+                    java.lang.reflect.Method registerMethod;
+                    try {
+                        registerMethod = renderersClass.getMethod("register", net.minecraft.world.entity.EntityType.class, net.minecraft.client.renderer.entity.EntityRendererProvider.class);
+                    } catch (NoSuchMethodException e) {
+                        registerMethod = renderersClass.getMethod("a", net.minecraft.world.entity.EntityType.class, net.minecraft.client.renderer.entity.EntityRendererProvider.class);
+                    }
+                    registerMethod.setAccessible(true);
+                    registerMethod.invoke(null, entry.getKey(), entry.getValue());
+                } catch (Throwable t) {
+                    System.err.println("[ChainLoader] Failed to register entity renderer for " + entry.getKey() + " via reflection:");
+                    t.printStackTrace();
                 }
-                registerMethod.setAccessible(true);
-                registerMethod.invoke(null, entry.getKey(), entry.getValue());
-            } catch (Throwable t) {
-                System.err.println("[ChainLoader] Failed to register entity renderer for " + entry.getKey() + " via reflection:");
-                t.printStackTrace();
             }
-        }
 
-        // Register Block Entity Renderers captured in the event using reflection
-        for (java.util.Map.Entry<net.minecraft.world.level.block.entity.BlockEntityType<?>, net.minecraft.client.renderer.blockentity.BlockEntityRendererProvider<?>> entry : registerRenderersEvent.getBlockEntityRenderers().entrySet()) {
-            try {
-                System.out.println("[ChainLoader] Registering NeoForge block entity renderer for: " + entry.getKey());
-                Class<?> renderersClass = Class.forName("net.minecraft.client.renderer.blockentity.BlockEntityRenderers");
-                java.lang.reflect.Method registerMethod;
+            // Register Block Entity Renderers captured in the event using reflection
+            for (java.util.Map.Entry<net.minecraft.world.level.block.entity.BlockEntityType<?>, net.minecraft.client.renderer.blockentity.BlockEntityRendererProvider<?>> entry : reg.getBlockEntityRenderers().entrySet()) {
                 try {
-                    registerMethod = renderersClass.getMethod("register", net.minecraft.world.level.block.entity.BlockEntityType.class, net.minecraft.client.renderer.blockentity.BlockEntityRendererProvider.class);
-                } catch (NoSuchMethodException e) {
-                    registerMethod = renderersClass.getMethod("a", net.minecraft.world.level.block.entity.BlockEntityType.class, net.minecraft.client.renderer.blockentity.BlockEntityRendererProvider.class);
+                    System.out.println("[ChainLoader] Registering NeoForge block entity renderer for: " + entry.getKey());
+                    Class<?> renderersClass = Class.forName("net.minecraft.client.renderer.blockentity.BlockEntityRenderers");
+                    java.lang.reflect.Method registerMethod;
+                    try {
+                        registerMethod = renderersClass.getMethod("register", net.minecraft.world.level.block.entity.BlockEntityType.class, net.minecraft.client.renderer.blockentity.BlockEntityRendererProvider.class);
+                    } catch (NoSuchMethodException e) {
+                        registerMethod = renderersClass.getMethod("a", net.minecraft.world.level.block.entity.BlockEntityType.class, net.minecraft.client.renderer.blockentity.BlockEntityRendererProvider.class);
+                    }
+                    registerMethod.setAccessible(true);
+                    registerMethod.invoke(null, entry.getKey(), entry.getValue());
+                } catch (Throwable t) {
+                    System.err.println("[ChainLoader] Failed to register block entity renderer for " + entry.getKey() + " via reflection:");
+                    t.printStackTrace();
                 }
-                registerMethod.setAccessible(true);
-                registerMethod.invoke(null, entry.getKey(), entry.getValue());
-            } catch (Throwable t) {
-                System.err.println("[ChainLoader] Failed to register block entity renderer for " + entry.getKey() + " via reflection:");
-                t.printStackTrace();
             }
         }
 
         // Save registered layer definitions for model reloading merging
-        customLayerDefinitions.putAll(registerLayerDefsEvent.getLayerDefinitions());
+        if (registerLayerDefsEvent instanceof net.neoforged.neoforge.client.event.EntityRenderersEvent.RegisterLayerDefinitions) {
+            net.neoforged.neoforge.client.event.EntityRenderersEvent.RegisterLayerDefinitions reg = 
+                (net.neoforged.neoforge.client.event.EntityRenderersEvent.RegisterLayerDefinitions) registerLayerDefsEvent;
+            customLayerDefinitions.putAll(reg.getLayerDefinitions());
+        }
 
         // 2. Instantiate and call Fabric "client" entrypoints
         net.chainloader.loader.core.gui.EarlyLoadingScreen.getInstance().updateProgress(95, "Initializing Fabric client entrypoints...");
@@ -2046,6 +2062,161 @@ public class EventBridgeHelper {
                     t.printStackTrace();
                 }
             }
+        }
+    }
+
+    public static int currentPage = 0;
+
+    private static java.util.List<net.minecraft.world.item.CreativeModeTab> getCachedAllTabs() {
+        java.util.List<net.minecraft.world.item.CreativeModeTab> allTabs = new java.util.ArrayList<>();
+        for (net.minecraft.world.item.CreativeModeTab tab : net.minecraft.core.registries.BuiltInRegistries.CREATIVE_MODE_TAB) {
+            allTabs.add(tab);
+        }
+        return allTabs;
+    }
+
+    public static int getTotalCreativePages() {
+        java.util.List<net.minecraft.world.item.CreativeModeTab> all = getCachedAllTabs();
+        if (all.size() <= 14) return 1;
+        int moddedCount = all.size() - 14;
+        return 1 + (int) Math.ceil((double) moddedCount / 12.0);
+    }
+
+    public static java.util.List<net.minecraft.world.item.CreativeModeTab> getCreativeModeTabs() {
+        java.util.List<net.minecraft.world.item.CreativeModeTab> all = getCachedAllTabs();
+        if (all.size() <= 14) {
+            return all;
+        }
+        if (currentPage == 0) {
+            return all.subList(0, 14);
+        } else {
+            int startIdx = 14 + (currentPage - 1) * 12;
+            int endIdx = Math.min(all.size(), startIdx + 12);
+            if (startIdx >= all.size()) {
+                currentPage = 0;
+                return all.subList(0, 14);
+            }
+            return all.subList(startIdx, endIdx);
+        }
+    }
+
+    public static Object getCreativeTabRow(Object tabObj) {
+        net.minecraft.world.item.CreativeModeTab tab = (net.minecraft.world.item.CreativeModeTab) tabObj;
+        java.util.List<net.minecraft.world.item.CreativeModeTab> all = getCachedAllTabs();
+        int idx = all.indexOf(tab);
+        if (idx == -1 || idx < 14) {
+            return tab.g();
+        }
+        int moddedIdx = idx - 14;
+        int idxOnPage = moddedIdx % 12;
+        if (idxOnPage < 6) {
+            return net.minecraft.world.item.CreativeModeTab.Row.TOP;
+        } else {
+            return net.minecraft.world.item.CreativeModeTab.Row.BOTTOM;
+        }
+    }
+
+    public static int getCreativeTabColumn(Object tabObj) {
+        net.minecraft.world.item.CreativeModeTab tab = (net.minecraft.world.item.CreativeModeTab) tabObj;
+        java.util.List<net.minecraft.world.item.CreativeModeTab> all = getCachedAllTabs();
+        int idx = all.indexOf(tab);
+        if (idx == -1 || idx < 14) {
+            return tab.f();
+        }
+        int moddedIdx = idx - 14;
+        int idxOnPage = moddedIdx % 12;
+        if (idxOnPage < 6) {
+            return idxOnPage;
+        } else {
+            return idxOnPage - 6;
+        }
+    }
+
+    public static void onCreativeScreenRender(Object screenObj, Object guiGraphicsObj, int mouseX, int mouseY) {
+        net.minecraft.client.gui.screens.inventory.CreativeModeInventoryScreen screen = 
+            (net.minecraft.client.gui.screens.inventory.CreativeModeInventoryScreen) screenObj;
+        net.minecraft.client.gui.GuiGraphics guiGraphics = (net.minecraft.client.gui.GuiGraphics) guiGraphicsObj;
+
+        int left = (screen.width - 195) / 2;
+        int top = (screen.height - 136) / 2;
+
+        int totalPages = getTotalCreativePages();
+        if (totalPages > 1) {
+            guiGraphics.drawString(screen.getMinecraft().font, "<", left + 75, top - 40, currentPage > 0 ? 0xFFFFFFFF : 0xFF808080);
+            
+            String pageStr = (currentPage + 1) + "/" + totalPages;
+            guiGraphics.drawString(screen.getMinecraft().font, pageStr, left + 90, top - 40, 0xFFFFFFFF);
+            
+            guiGraphics.drawString(screen.getMinecraft().font, ">", left + 120, top - 40, currentPage < totalPages - 1 ? 0xFFFFFFFF : 0xFF808080);
+        }
+    }
+
+    public static boolean onCreativeScreenMouseClicked(Object screenObj, double mouseX, double mouseY, int button) {
+        if (button != 0) return false;
+
+        net.minecraft.client.gui.screens.inventory.CreativeModeInventoryScreen screen = 
+            (net.minecraft.client.gui.screens.inventory.CreativeModeInventoryScreen) screenObj;
+
+        int left = (screen.width - 195) / 2;
+        int top = (screen.height - 136) / 2;
+
+        int totalPages = getTotalCreativePages();
+        if (totalPages > 1) {
+            if (mouseX >= left + 70 && mouseX <= left + 85 && mouseY >= top - 45 && mouseY <= top - 30) {
+                if (currentPage > 0) {
+                    currentPage--;
+                    updateActiveTab(screen);
+                    return true;
+                }
+            }
+            if (mouseX >= left + 115 && mouseX <= left + 130 && mouseY >= top - 45 && mouseY <= top - 30) {
+                if (currentPage < totalPages - 1) {
+                    currentPage++;
+                    updateActiveTab(screen);
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    private static void updateActiveTab(Object screenObj) {
+        try {
+            Class<?> screenClass = screenObj.getClass();
+            java.lang.reflect.Field selectedTabField = null;
+            try {
+                selectedTabField = screenClass.getDeclaredField("T");
+            } catch (NoSuchFieldException e) {
+                selectedTabField = screenClass.getDeclaredField("selectedTab");
+            }
+            selectedTabField.setAccessible(true);
+            
+            java.util.List<net.minecraft.world.item.CreativeModeTab> visibleTabs = getCreativeModeTabs();
+            if (!visibleTabs.isEmpty()) {
+                selectedTabField.set(screenObj, visibleTabs.get(0));
+                
+                java.lang.reflect.Method setSelectedTabMethod = null;
+                for (java.lang.reflect.Method m : screenClass.getDeclaredMethods()) {
+                    if (m.getParameterCount() == 1 && m.getParameterTypes()[0].getName().equals("cta")) {
+                        setSelectedTabMethod = m;
+                        break;
+                    }
+                }
+                if (setSelectedTabMethod == null) {
+                    for (java.lang.reflect.Method m : screenClass.getDeclaredMethods()) {
+                        if (m.getParameterCount() == 1 && m.getParameterTypes()[0].getSimpleName().equals("CreativeModeTab")) {
+                            setSelectedTabMethod = m;
+                            break;
+                        }
+                    }
+                }
+                if (setSelectedTabMethod != null) {
+                    setSelectedTabMethod.setAccessible(true);
+                    setSelectedTabMethod.invoke(screenObj, visibleTabs.get(0));
+                }
+            }
+        } catch (Throwable t) {
+            t.printStackTrace();
         }
     }
 
@@ -3130,11 +3301,145 @@ public class EventBridgeHelper {
         }
     }
 
+    private static final java.util.Map<net.minecraft.resources.ResourceLocation, Class<?>> DYNAMIC_PAYLOAD_CLASSES = new java.util.concurrent.ConcurrentHashMap<>();
+    private static final java.util.Map<net.minecraft.resources.ResourceLocation, Object> DYNAMIC_PAYLOAD_CODECS = new java.util.concurrent.ConcurrentHashMap<>();
+
+    public static Class<?> getOrCreateDynamicPayloadClass(net.minecraft.resources.ResourceLocation channelId) {
+        System.out.println("[EventBridgeHelper DEBUG] getOrCreateDynamicPayloadClass: channelId=" + channelId);
+        return DYNAMIC_PAYLOAD_CLASSES.computeIfAbsent(channelId, id -> {
+            String sanitized = id.getNamespace() + "_" + id.getPath();
+            sanitized = sanitized.replace(':', '_').replace('/', '_').replace('-', '_');
+            String className = "net.chainloader.loader.compat.bridge.DynamicPayload_" + sanitized;
+            System.out.println("[EventBridgeHelper DEBUG] Generating dynamic payload class " + className + " for channel " + id);
+            try {
+                ClassLoader rawLoader = net.chainloader.loader.transformer.BytecodeTransformer.getClassLoader();
+                System.out.println("[EventBridgeHelper DEBUG] rawLoader=" + (rawLoader != null ? rawLoader.getClass().getName() : "null"));
+                if (rawLoader instanceof net.chainloader.loader.core.ChainClassLoader) {
+                    net.chainloader.loader.core.ChainClassLoader loader = (net.chainloader.loader.core.ChainClassLoader) rawLoader;
+                    byte[] bytes = generatePayloadClassBytes(className, id.getNamespace(), id.getPath());
+                    Class<?> c = loader.defineDynamicClass(className, bytes);
+                    System.out.println("[EventBridgeHelper DEBUG] Successfully defined class " + (c != null ? c.getName() : "null"));
+                    return c;
+                } else {
+                    Class<?> c = Class.forName(className);
+                    System.out.println("[EventBridgeHelper DEBUG] Successfully loaded class via Class.forName: " + (c != null ? c.getName() : "null"));
+                    return c;
+                }
+            } catch (Throwable t) {
+                System.err.println("[EventBridgeHelper DEBUG] ERROR defining class for channel " + id);
+                t.printStackTrace();
+                throw new RuntimeException("Failed to generate dynamic payload class for " + id, t);
+            }
+        });
+    }
+
+    public static Object getOrCreateDynamicPayloadCodec(net.minecraft.resources.ResourceLocation channelId, Class<?> cls) {
+        System.out.println("[EventBridgeHelper DEBUG] getOrCreateDynamicPayloadCodec: channelId=" + channelId + ", cls=" + (cls != null ? cls.getName() : "null"));
+        if (cls == null) {
+            throw new IllegalArgumentException("dynamicClass cannot be null for channel: " + channelId);
+        }
+        System.out.println("[EventBridgeHelper DEBUG] Declared constructors for " + cls.getName() + ":");
+        for (java.lang.reflect.Constructor<?> c : cls.getDeclaredConstructors()) {
+            System.out.println("  " + c.toString() + " | params=" + java.util.Arrays.toString(c.getParameterTypes()));
+        }
+        return DYNAMIC_PAYLOAD_CODECS.computeIfAbsent(channelId, id -> {
+            try {
+                java.lang.reflect.Constructor<?> ctor = cls.getConstructor(byte[].class);
+                return net.minecraft.network.codec.StreamCodec.of(
+                    (net.minecraft.network.FriendlyByteBuf buf, Object payload) -> {
+                        try {
+                            byte[] data = (byte[]) cls.getMethod("data").invoke(payload);
+                            buf.writeByteArray(data);
+                        } catch (Exception e) {
+                            throw new RuntimeException(e);
+                        }
+                    },
+                    (net.minecraft.network.FriendlyByteBuf buf) -> {
+                        try {
+                            byte[] data = buf.readByteArray();
+                            return ctor.newInstance((Object) data);
+                        } catch (Exception e) {
+                            throw new RuntimeException(e);
+                        }
+                    }
+                );
+            } catch (Exception e) {
+                throw new RuntimeException("Failed to create StreamCodec for dynamic payload: " + cls.getName(), e);
+            }
+        });
+    }
+
+    private static String mapClass(String deobfInternalName) {
+        net.chainloader.loader.transformer.BytecodeTransformer trans = net.chainloader.loader.transformer.BytecodeTransformer.getInstance();
+        if (trans != null) {
+            String mapped = trans.map(deobfInternalName);
+            if (mapped != null) {
+                return mapped;
+            }
+        }
+        return deobfInternalName;
+    }
+
+    public static byte[] generatePayloadClassBytes(String className, String namespace, String path) {
+        String internalName = className.replace('.', '/');
+        org.objectweb.asm.ClassWriter cw = new org.objectweb.asm.ClassWriter(org.objectweb.asm.ClassWriter.COMPUTE_FRAMES | org.objectweb.asm.ClassWriter.COMPUTE_MAXS);
+        
+        String customPacketPayload = mapClass("net/minecraft/network/protocol/common/custom/CustomPacketPayload");
+        String resourceLocation = mapClass("net/minecraft/resources/ResourceLocation");
+        String customPacketPayloadType = mapClass("net/minecraft/network/protocol/common/custom/CustomPacketPayload$Type");
+
+        cw.visit(org.objectweb.asm.Opcodes.V17, org.objectweb.asm.Opcodes.ACC_PUBLIC | org.objectweb.asm.Opcodes.ACC_SUPER, internalName, null, "java/lang/Object", 
+                 new String[]{customPacketPayload});
+                 
+        cw.visitField(org.objectweb.asm.Opcodes.ACC_PRIVATE | org.objectweb.asm.Opcodes.ACC_FINAL, "data", "[B", null, null).visitEnd();
+        
+        // Constructor
+        org.objectweb.asm.MethodVisitor mv = cw.visitMethod(org.objectweb.asm.Opcodes.ACC_PUBLIC, "<init>", "([B)V", null, null);
+        mv.visitCode();
+        mv.visitVarInsn(org.objectweb.asm.Opcodes.ALOAD, 0);
+        mv.visitMethodInsn(org.objectweb.asm.Opcodes.INVOKESPECIAL, "java/lang/Object", "<init>", "()V", false);
+        mv.visitVarInsn(org.objectweb.asm.Opcodes.ALOAD, 0);
+        mv.visitVarInsn(org.objectweb.asm.Opcodes.ALOAD, 1);
+        mv.visitFieldInsn(org.objectweb.asm.Opcodes.PUTFIELD, internalName, "data", "[B");
+        mv.visitInsn(org.objectweb.asm.Opcodes.RETURN);
+        mv.visitMaxs(0, 0);
+        mv.visitEnd();
+        
+        // Getter
+        mv = cw.visitMethod(org.objectweb.asm.Opcodes.ACC_PUBLIC, "data", "()[B", null, null);
+        mv.visitCode();
+        mv.visitVarInsn(org.objectweb.asm.Opcodes.ALOAD, 0);
+        mv.visitFieldInsn(org.objectweb.asm.Opcodes.GETFIELD, internalName, "data", "[B");
+        mv.visitInsn(org.objectweb.asm.Opcodes.ARETURN);
+        mv.visitMaxs(0, 0);
+        mv.visitEnd();
+        
+        // type()
+        mv = cw.visitMethod(org.objectweb.asm.Opcodes.ACC_PUBLIC, "type", "()L" + customPacketPayloadType + ";", null, null);
+        mv.visitCode();
+        mv.visitTypeInsn(org.objectweb.asm.Opcodes.NEW, customPacketPayloadType);
+        mv.visitInsn(org.objectweb.asm.Opcodes.DUP);
+        mv.visitTypeInsn(org.objectweb.asm.Opcodes.NEW, resourceLocation);
+        mv.visitInsn(org.objectweb.asm.Opcodes.DUP);
+        mv.visitLdcInsn(namespace);
+        mv.visitLdcInsn(path);
+        mv.visitMethodInsn(org.objectweb.asm.Opcodes.INVOKESPECIAL, resourceLocation, "<init>", "(Ljava/lang/String;Ljava/lang/String;)V", false);
+        mv.visitMethodInsn(org.objectweb.asm.Opcodes.INVOKESPECIAL, customPacketPayloadType, "<init>", "(L" + resourceLocation + ";)V", false);
+        mv.visitInsn(org.objectweb.asm.Opcodes.ARETURN);
+        mv.visitMaxs(0, 0);
+        mv.visitEnd();
+        
+        cw.visitEnd();
+        return cw.toByteArray();
+    }
+
     public static void ensureChannelRegistered(net.minecraft.resources.ResourceLocation channelId) {
         if (REGISTERED_CHANNELS.add(channelId)) {
             System.out.println("[EventBridgeHelper] Dynamically registering custom payload channel on the fly: " + channelId);
+            Class<?> dynamicClass = getOrCreateDynamicPayloadClass(channelId);
+            Object dynamicCodec = getOrCreateDynamicPayloadCodec(channelId, dynamicClass);
             for (java.util.concurrent.ConcurrentHashMap<net.minecraft.resources.ResourceLocation, Object> map : codecInstances.values()) {
-                map.put(channelId, ChainloaderPayload.STREAM_CODEC(channelId));
+                map.put(channelId, dynamicCodec);
             }
         }
     }
@@ -3146,19 +3451,23 @@ public class EventBridgeHelper {
         }
         System.out.println("[EventBridgeHelper] Dynamically registering custom payload channel on NeoForge: " + channelId);
         
-        net.minecraft.network.protocol.common.custom.CustomPacketPayload.Type<ChainloaderPayload> payloadType = 
+        Class<?> dynamicClass = getOrCreateDynamicPayloadClass(channelId);
+        Object dynamicCodec = getOrCreateDynamicPayloadCodec(channelId, dynamicClass);
+        
+        net.minecraft.network.protocol.common.custom.CustomPacketPayload.Type<net.minecraft.network.protocol.common.custom.CustomPacketPayload> payloadType = 
             new net.minecraft.network.protocol.common.custom.CustomPacketPayload.Type<>(channelId);
         
         registrar.playBidirectional(
-            payloadType,
-            ChainloaderPayload.STREAM_CODEC(channelId),
+            (net.minecraft.network.protocol.common.custom.CustomPacketPayload.Type) payloadType,
+            (net.minecraft.network.codec.StreamCodec) dynamicCodec,
             (payload, context) -> {
                 boolean isClient = context.flow() == net.minecraft.network.protocol.PacketFlow.CLIENTBOUND;
                 
                 context.enqueueWork(() -> {
                     try {
+                        byte[] data = (byte[]) dynamicClass.getMethod("data").invoke(payload);
                         net.minecraft.network.FriendlyByteBuf buf = 
-                            new net.minecraft.network.FriendlyByteBuf(io.netty.buffer.Unpooled.wrappedBuffer(payload.data()));
+                            new net.minecraft.network.FriendlyByteBuf(io.netty.buffer.Unpooled.wrappedBuffer(data));
                         
                         if (isClient) {
                             if (net.neoforged.fml.loading.FMLEnvironment.dist.isClient()) {
@@ -3268,5 +3577,112 @@ public class EventBridgeHelper {
             }
         }
         return null;
+    }
+
+    public static Object createSoftwareGuiGraphics(int width, int height, Object mockMinecraft) {
+        String className = "net.chainloader.loader.compat.bridge.SoftwareGuiGraphics";
+        try {
+            ClassLoader rawLoader = net.chainloader.loader.transformer.BytecodeTransformer.getClassLoader();
+            Class<?> dynamicClass;
+            if (rawLoader instanceof net.chainloader.loader.core.ChainClassLoader) {
+                net.chainloader.loader.core.ChainClassLoader loader = (net.chainloader.loader.core.ChainClassLoader) rawLoader;
+                byte[] bytes = generateSoftwareGuiGraphicsBytes(className);
+                dynamicClass = loader.defineDynamicClass(className, bytes);
+            } else {
+                dynamicClass = Class.forName(className);
+            }
+            SoftwareRenderHelper.init(width, height);
+            
+            // Invoke the constructor taking (Minecraft, MultiBufferSource$BufferSource)
+            Class<?> minecraftClass = Class.forName(mapClass("net/minecraft/client/Minecraft").replace('/', '.'), true, rawLoader);
+            Class<?> bufferSourceClass = Class.forName(mapClass("net/minecraft/client/renderer/MultiBufferSource$BufferSource").replace('/', '.'), true, rawLoader);
+            java.lang.reflect.Constructor<?> ctor = dynamicClass.getConstructor(minecraftClass, bufferSourceClass);
+            return ctor.newInstance(mockMinecraft, null);
+        } catch (Throwable t) {
+            t.printStackTrace();
+            throw new RuntimeException("Failed to instantiate SoftwareGuiGraphics", t);
+        }
+    }
+
+    public static byte[] generateSoftwareGuiGraphicsBytes(String className) {
+        String internalName = className.replace('.', '/');
+        org.objectweb.asm.ClassWriter cw = new org.objectweb.asm.ClassWriter(org.objectweb.asm.ClassWriter.COMPUTE_FRAMES | org.objectweb.asm.ClassWriter.COMPUTE_MAXS);
+        
+        String guiGraphics = mapClass("net/minecraft/client/gui/GuiGraphics");
+        String font = mapClass("net/minecraft/client/gui/Font");
+        String component = mapClass("net/minecraft/network/chat/Component");
+        String resourceLocation = mapClass("net/minecraft/resources/ResourceLocation");
+        String guiGraphicsParam1 = mapClass("net/minecraft/client/Minecraft");
+        String guiGraphicsParam2 = mapClass("net/minecraft/client/renderer/MultiBufferSource$BufferSource");
+
+        cw.visit(org.objectweb.asm.Opcodes.V17, org.objectweb.asm.Opcodes.ACC_PUBLIC | org.objectweb.asm.Opcodes.ACC_SUPER, internalName, null, guiGraphics, null);
+        
+        // Constructor with parameters: (Minecraft, MultiBufferSource$BufferSource)
+        org.objectweb.asm.MethodVisitor mv = cw.visitMethod(org.objectweb.asm.Opcodes.ACC_PUBLIC, "<init>", "(L" + guiGraphicsParam1 + ";L" + guiGraphicsParam2 + ";)V", null, null);
+        mv.visitCode();
+        mv.visitVarInsn(org.objectweb.asm.Opcodes.ALOAD, 0);
+        mv.visitVarInsn(org.objectweb.asm.Opcodes.ALOAD, 1);
+        mv.visitVarInsn(org.objectweb.asm.Opcodes.ALOAD, 2);
+        mv.visitMethodInsn(org.objectweb.asm.Opcodes.INVOKESPECIAL, guiGraphics, "<init>", "(L" + guiGraphicsParam1 + ";L" + guiGraphicsParam2 + ";)V", false);
+        mv.visitInsn(org.objectweb.asm.Opcodes.RETURN);
+        mv.visitMaxs(0, 0);
+        mv.visitEnd();
+        
+        // Override fill(IIIII)V
+        mv = cw.visitMethod(org.objectweb.asm.Opcodes.ACC_PUBLIC, "fill", "(IIIII)V", null, null);
+        mv.visitCode();
+        mv.visitVarInsn(org.objectweb.asm.Opcodes.ILOAD, 1);
+        mv.visitVarInsn(org.objectweb.asm.Opcodes.ILOAD, 2);
+        mv.visitVarInsn(org.objectweb.asm.Opcodes.ILOAD, 3);
+        mv.visitVarInsn(org.objectweb.asm.Opcodes.ILOAD, 4);
+        mv.visitVarInsn(org.objectweb.asm.Opcodes.ILOAD, 5);
+        mv.visitMethodInsn(org.objectweb.asm.Opcodes.INVOKESTATIC, "net/chainloader/loader/compat/bridge/SoftwareRenderHelper", "fill", "(IIIII)V", false);
+        mv.visitInsn(org.objectweb.asm.Opcodes.RETURN);
+        mv.visitMaxs(0, 0);
+        mv.visitEnd();
+
+        // Override drawString(Font, String, IIIZ)I
+        mv = cw.visitMethod(org.objectweb.asm.Opcodes.ACC_PUBLIC, "drawString", "(L" + font + ";Ljava/lang/String;IIIZ)I", null, null);
+        mv.visitCode();
+        mv.visitVarInsn(org.objectweb.asm.Opcodes.ALOAD, 2);
+        mv.visitVarInsn(org.objectweb.asm.Opcodes.ILOAD, 3);
+        mv.visitVarInsn(org.objectweb.asm.Opcodes.ILOAD, 4);
+        mv.visitVarInsn(org.objectweb.asm.Opcodes.ILOAD, 5);
+        mv.visitMethodInsn(org.objectweb.asm.Opcodes.INVOKESTATIC, "net/chainloader/loader/compat/bridge/SoftwareRenderHelper", "drawString", "(Ljava/lang/String;III)V", false);
+        mv.visitInsn(org.objectweb.asm.Opcodes.ICONST_0);
+        mv.visitInsn(org.objectweb.asm.Opcodes.IRETURN);
+        mv.visitMaxs(0, 0);
+        mv.visitEnd();
+
+        // Override drawString(Font, Component, IIIZ)I
+        mv = cw.visitMethod(org.objectweb.asm.Opcodes.ACC_PUBLIC, "drawString", "(L" + font + ";L" + component + ";IIIZ)I", null, null);
+        mv.visitCode();
+        mv.visitVarInsn(org.objectweb.asm.Opcodes.ALOAD, 2);
+        mv.visitMethodInsn(org.objectweb.asm.Opcodes.INVOKEINTERFACE, component, "getString", "()Ljava/lang/String;", true);
+        mv.visitVarInsn(org.objectweb.asm.Opcodes.ILOAD, 3);
+        mv.visitVarInsn(org.objectweb.asm.Opcodes.ILOAD, 4);
+        mv.visitVarInsn(org.objectweb.asm.Opcodes.ILOAD, 5);
+        mv.visitMethodInsn(org.objectweb.asm.Opcodes.INVOKESTATIC, "net/chainloader/loader/compat/bridge/SoftwareRenderHelper", "drawString", "(Ljava/lang/String;III)V", false);
+        mv.visitInsn(org.objectweb.asm.Opcodes.ICONST_0);
+        mv.visitInsn(org.objectweb.asm.Opcodes.IRETURN);
+        mv.visitMaxs(0, 0);
+        mv.visitEnd();
+
+        // Override blit(ResourceLocation, IIIIII)V
+        mv = cw.visitMethod(org.objectweb.asm.Opcodes.ACC_PUBLIC, "blit", "(L" + resourceLocation + ";IIIIII)V", null, null);
+        mv.visitCode();
+        mv.visitVarInsn(org.objectweb.asm.Opcodes.ALOAD, 1);
+        mv.visitMethodInsn(org.objectweb.asm.Opcodes.INVOKEVIRTUAL, "java/lang/Object", "toString", "()Ljava/lang/String;", false);
+        mv.visitVarInsn(org.objectweb.asm.Opcodes.ILOAD, 2);
+        mv.visitVarInsn(org.objectweb.asm.Opcodes.ILOAD, 3);
+        mv.visitVarInsn(org.objectweb.asm.Opcodes.ILOAD, 6);
+        mv.visitVarInsn(org.objectweb.asm.Opcodes.ILOAD, 7);
+        mv.visitMethodInsn(org.objectweb.asm.Opcodes.INVOKESTATIC, "net/chainloader/loader/compat/bridge/SoftwareRenderHelper", "blit", "(Ljava/lang/String;IIII)V", false);
+        mv.visitInsn(org.objectweb.asm.Opcodes.RETURN);
+        mv.visitMaxs(0, 0);
+        mv.visitEnd();
+
+        cw.visitEnd();
+        return cw.toByteArray();
     }
 }

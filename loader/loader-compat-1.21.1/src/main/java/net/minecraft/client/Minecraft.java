@@ -9,6 +9,7 @@ public class Minecraft {
     public net.minecraft.client.multiplayer.ClientLevel level;
     public net.minecraft.client.player.LocalPlayer player;
     public Options options = new Options();
+    public net.minecraft.client.gui.Font font = new net.minecraft.client.gui.Font();
 
     public static Minecraft getInstance() {
         return instance;
