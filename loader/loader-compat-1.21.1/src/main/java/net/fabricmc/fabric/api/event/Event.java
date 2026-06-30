@@ -93,7 +93,12 @@ public class Event<T> {
                                     Class<?> current = listener.getClass();
                                     while (current != null && !invoked) {
                                         for (java.lang.reflect.Method m : current.getDeclaredMethods()) {
-                                            if (m.getName().equals(method.getName())) {
+                                            String name = m.getName();
+                                            String target = method.getName();
+                                            boolean nameMatches = name.equals(target) || 
+                                                (target.equals("modify") && name.equals("modifyEntries")) ||
+                                                (target.equals("modifyEntries") && name.equals("modify"));
+                                            if (nameMatches) {
                                                 Object[] adaptedArgs = adaptArguments(args, m.getParameterTypes());
                                                 if (adaptedArgs != null) {
                                                     try {

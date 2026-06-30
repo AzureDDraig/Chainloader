@@ -66,6 +66,10 @@ public class BytecodeTransformer {
         return remapper.mapMethodName(owner, name, descriptor);
     }
 
+    public String mapFieldName(String owner, String name, String descriptor) {
+        return remapper.mapFieldName(owner, name, descriptor);
+    }
+
     public BytecodeTransformer() {
         instance = this;
     }

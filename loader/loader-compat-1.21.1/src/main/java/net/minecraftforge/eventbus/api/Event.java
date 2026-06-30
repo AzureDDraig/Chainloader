@@ -38,6 +38,6 @@ public class Event {
     }
 
     public boolean hasResult() {
-        return false;
+        return getClass().isAnnotationPresent(HasResult.class);
     }
 }

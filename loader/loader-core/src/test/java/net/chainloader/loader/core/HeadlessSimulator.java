@@ -176,7 +176,53 @@ public class HeadlessSimulator {
                 }
             }
 
-            // 7. Simulating Minecraft client initialization to test EntityRenderersEvent firing and registration capture
+            // Simulate Creative Mode Tab contents building
+            System.out.println("\n--- SIMULATING CREATIVE MODE TAB CONTENTS BUILDING ---");
+            try {
+                Class<?> creativeModeTabsClass = classLoader.loadClass("ctb");
+                java.lang.reflect.Method allTabsMethod = creativeModeTabsClass.getMethod("d"); // d() is allTabs()
+                java.util.List<?> allTabs = (java.util.List<?>) allTabsMethod.invoke(null);
+                
+                Class<?> featureFlagSetClass = classLoader.loadClass("cpl");
+                java.lang.reflect.Method emptyFlagsMethod = featureFlagSetClass.getMethod("a");
+                Object emptyFlags = emptyFlagsMethod.invoke(null);
+                
+                Class<?> providerClass = classLoader.loadClass("jo$a");
+                Object mockProvider = java.lang.reflect.Proxy.newProxyInstance(
+                    classLoader,
+                    new Class<?>[] { providerClass },
+                    (proxy, method, arguments) -> {
+                        if (method.getReturnType().equals(java.util.Optional.class)) {
+                            return java.util.Optional.empty();
+                        }
+                        return null;
+                    }
+                );
+                
+                Class<?> displayParamsClass = classLoader.loadClass("cta$d"); // cta$d is ItemDisplayParameters
+                java.lang.reflect.Constructor<?> ctor = displayParamsClass.getConstructor(featureFlagSetClass, boolean.class, providerClass);
+                Object mockParams = ctor.newInstance(emptyFlags, false, mockProvider);
+                
+                Class<?> creativeModeTabClass = classLoader.loadClass("cta");
+                java.lang.reflect.Method buildContentsMethod = creativeModeTabClass.getMethod("a", displayParamsClass);
+                
+                java.lang.reflect.Method getIconItemMethod = creativeModeTabClass.getMethod("b");
+
+
+                for (Object tab : allTabs) {
+                    try {
+                        buildContentsMethod.invoke(tab, mockParams);
+                        Object iconStack = getIconItemMethod.invoke(tab);
+                        System.out.println("  Tab: " + tab + " | Icon Stack: " + iconStack);
+                    } catch (Throwable t) {
+                        System.out.println("  Failed to build contents for tab: " + t.getCause());
+                    }
+                }
+            } catch (Throwable t) {
+                System.err.println("Failed to simulate creative tab building:");
+                t.printStackTrace();
+            }
+            System.out.println("--- CREATIVE MODE TAB CONTENTS BUILDING SIMULATION END ---\n");
 
             // Simulate Minecraft client initialization to test EntityRenderersEvent firing and registration capture
             System.out.println("\n--- SIMULATING MINECRAFT CLIENT INITIALIZATION (TESTING ENTITY RENDERERS EVENTS) ---");
@@ -195,6 +241,24 @@ public class HeadlessSimulator {
             System.out.println("\n--- RUNNING HEADLESS SIMULATED INTERACTIONS ---");
             runSimulatedActions(classLoader, mockMinecraft);
             System.out.println("--- SIMULATED INTERACTIONS SUCCESS ---");
+
+            // Verify Screen.init ACC_FINAL stripping
+            System.out.println("\n--- VERIFYING SCREEN.INIT FINAL STRIPPING ---");
+            try {
+                Class<?> screenClass = classLoader.loadClass("fod");
+                java.lang.reflect.Method initMethod = screenClass.getDeclaredMethod("b", classLoader.loadClass("fgo"), int.class, int.class);
+                int modifiers = initMethod.getModifiers();
+                boolean isFinal = java.lang.reflect.Modifier.isFinal(modifiers);
+                System.out.println("[SIMULATOR] Screen.b modifiers: " + java.lang.reflect.Modifier.toString(modifiers) + " (isFinal=" + isFinal + ")");
+                if (isFinal) {
+                    throw new RuntimeException("Assertion failed: Screen.b (init) is still final!");
+                }
+                System.out.println("[SIMULATOR] Screen.init final stripping verified successfully!");
+            } catch (Throwable t) {
+                System.err.println("[SIMULATOR] Failed to verify Screen.init final stripping:");
+                t.printStackTrace();
+                throw t;
+            }
 
             System.out.println("==================================================");
             System.out.println("  Simulator Completed Successfully!");

@@ -57,6 +57,7 @@ public abstract class Chainlink1_20_1_Base extends Chainlink1_21_1_Base {
 
     @Override
     public byte[] transform(String className, byte[] bytes) {
+        bytes = super.transform(className, bytes);
         if (className == null || bytes == null || bytes.length == 0) {
             return bytes;
         }

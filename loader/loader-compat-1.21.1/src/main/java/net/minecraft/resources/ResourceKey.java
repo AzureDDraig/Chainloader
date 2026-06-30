@@ -16,6 +16,10 @@ public class ResourceKey<T> {
         return new ResourceKey<>(registryName, location);
     }
 
+    public static <T> ResourceKey<T> create(ResourceKey<?> registryKey, ResourceLocation location) {
+        return new ResourceKey<>(registryKey.location(), location);
+    }
+
     public ResourceLocation location() {
         return location;
     }

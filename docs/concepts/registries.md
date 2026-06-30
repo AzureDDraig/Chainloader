@@ -52,6 +52,20 @@ When a NeoForge registry is ready for entries, the loader calls `executeBindingC
 4. **Forge Event Translation**: If any entries are bound, it posts a `ForgeRegistryEvent` containing the mapped objects on the compatibility event bus.
 5. Transitions state to `LifecycleState.COMPLETED`, and finally `LifecycleState.FROZEN`.
 
+### 2.2 Block-Item Mapping Synchronization (BY_BLOCK)
+In vanilla Minecraft 1.21.1, the mapping from `Block` to `Item` (stored in `Item.BY_BLOCK`) is only populated when blocks/items are registered using the high-level `Items.register` utility. Because compatibility layers bypass this utility by calling `Registry.register` directly, `Item.BY_BLOCK` remains unpopulated for modded blocks, causing `block.asItem()` to return `Items.AIR`.
+
+To solve this, `EventBridgeHelper.registerCleanly` intercepts registrations in the `minecraft:item` registry. If the registered value is an instance of `BlockItem`, it automatically populates the block-to-item mapping into `Item.BY_BLOCK`:
+```java
+if (registry.key().location().toString().equals("minecraft:item")) {
+    if (value instanceof net.minecraft.world.item.BlockItem) {
+        net.minecraft.world.item.BlockItem blockItem = (net.minecraft.world.item.BlockItem) value;
+        net.minecraft.world.item.Item.BY_BLOCK.put(blockItem.getBlock(), blockItem);
+    }
+}
+```
+This ensures `Block.asItem()` and `new ItemStack(block)` return the correct block items for modded blocks, enabling creative tab icons and entry listings to resolve correctly.
+
 ---
 
 ## 3. Remapping Registry Names (`RegistryHelper`)

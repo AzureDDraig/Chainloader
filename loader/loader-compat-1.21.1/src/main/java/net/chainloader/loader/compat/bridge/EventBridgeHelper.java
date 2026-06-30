@@ -845,7 +845,7 @@ public class EventBridgeHelper {
                         net.minecraft.core.registries.BuiltInRegistries.REGISTRY.get(registryId);
                     if (registry != null) {
                         net.minecraft.resources.ResourceLocation entryId = new net.minecraft.resources.ResourceLocation(entry.entryId);
-                        net.minecraft.core.Registry.register(
+                        registerCleanly(
                             (net.minecraft.core.Registry) registry,
                             entryId,
                             entry.value
@@ -1034,6 +1034,18 @@ public class EventBridgeHelper {
         unfreezeAndEnableIntrusive(registry, name.toString());
 
         net.minecraft.core.Registry.register(registry, name, value);
+
+        try {
+            if (registry.key().location().toString().equals("minecraft:item")) {
+                if (value instanceof net.minecraft.world.item.BlockItem) {
+                    net.minecraft.world.item.BlockItem blockItem = (net.minecraft.world.item.BlockItem) value;
+                    net.minecraft.world.item.Item.BY_BLOCK.put(blockItem.getBlock(), blockItem);
+                    System.out.println("[EventBridgeHelper] Dynamically registered block item mapping in Item.BY_BLOCK for: " + name);
+                }
+            }
+        } catch (Throwable t) {
+            System.err.println("[EventBridgeHelper] Failed to register block item mapping: " + t);
+        }
 
         try {
             // Also notify Fabric API port that an entry has been added
@@ -2025,7 +2037,7 @@ public class EventBridgeHelper {
                 try {
                     net.fabricmc.fabric.api.itemgroup.v1.FabricItemGroupEntriesWrapper fabricWrapper = 
                         new net.fabricmc.fabric.api.itemgroup.v1.FabricItemGroupEntriesWrapper((net.minecraft.world.item.CreativeModeTab.Output) output);
-                    net.fabricmc.fabric.api.itemgroup.v1.ItemGroupEvents.modifyEntriesEvent(tabKey).invoker().modify(fabricWrapper);
+                    net.fabricmc.fabric.api.itemgroup.v1.ItemGroupEvents.modifyEntriesEvent(tabKey).invoker().modifyEntries(fabricWrapper);
                     fabricWrapper.commit();
                 } catch (Throwable t) {
                     System.err.println("[ChainLoader] Failed to fire Fabric ItemGroupEvents:");
@@ -2067,7 +2079,138 @@ public class EventBridgeHelper {
 
     public static int currentPage = 0;
 
+    private static final java.util.Set<net.minecraft.world.item.CreativeModeTab> VANILLA_TABS = new java.util.HashSet<>();
+    private static final java.util.Map<net.minecraft.world.item.CreativeModeTab, Integer> MODDED_TAB_INDICES = new java.util.HashMap<>();
+    private static int nextModdedIndex = 0;
+    private static boolean vanillaTabsInitialized = false;
+
+    private static void patchTabFields(net.minecraft.world.item.CreativeModeTab tab, net.minecraft.world.item.CreativeModeTab.Row row, int col) {
+        try {
+            java.lang.reflect.Field rowField = null;
+            java.lang.reflect.Field colField = null;
+            try {
+                String mappedRowName = net.chainloader.loader.transformer.BytecodeTransformer.getInstance()
+                    .mapFieldName("net/minecraft/world/item/CreativeModeTab", "row", "Lnet/minecraft/world/item/CreativeModeTab$Row;");
+                rowField = tab.getClass().getDeclaredField(mappedRowName);
+            } catch (Throwable t) {
+                // Try fallback to known names
+                for (String name : new String[]{"g", "row", "field_41785"}) {
+                    try {
+                        rowField = tab.getClass().getDeclaredField(name);
+                        break;
+                    } catch (Throwable ignored) {}
+                }
+            }
+            try {
+                String mappedColName = net.chainloader.loader.transformer.BytecodeTransformer.getInstance()
+                    .mapFieldName("net/minecraft/world/item/CreativeModeTab", "column", "I");
+                colField = tab.getClass().getDeclaredField(mappedColName);
+            } catch (Throwable t) {
+                // Try fallback to known names
+                for (String name : new String[]{"h", "column", "field_41786"}) {
+                    try {
+                        colField = tab.getClass().getDeclaredField(name);
+                        break;
+                    } catch (Throwable ignored) {}
+                }
+            }
+            
+            if (rowField != null) {
+                rowField.setAccessible(true);
+                try {
+                    rowField.set(tab, row);
+                } catch (Throwable t) {
+                    setFinalFieldViaUnsafe(tab, rowField, row);
+                }
+            }
+            
+            if (colField != null) {
+                colField.setAccessible(true);
+                try {
+                    colField.set(tab, col);
+                } catch (Throwable t) {
+                    setFinalFieldViaUnsafe(tab, colField, col);
+                }
+            }
+        } catch (Throwable t) {
+            t.printStackTrace();
+        }
+    }
+
+    private static void setFinalFieldViaUnsafe(Object obj, java.lang.reflect.Field field, Object val) {
+        try {
+            java.lang.reflect.Field theUnsafeField = sun.misc.Unsafe.class.getDeclaredField("theUnsafe");
+            theUnsafeField.setAccessible(true);
+            sun.misc.Unsafe unsafe = (sun.misc.Unsafe) theUnsafeField.get(null);
+            long offset = unsafe.objectFieldOffset(field);
+            unsafe.putObject(obj, offset, val);
+        } catch (Throwable t) {
+            t.printStackTrace();
+        }
+    }
+
+    private static void setFinalFieldViaUnsafe(Object obj, java.lang.reflect.Field field, int val) {
+        try {
+            java.lang.reflect.Field theUnsafeField = sun.misc.Unsafe.class.getDeclaredField("theUnsafe");
+            theUnsafeField.setAccessible(true);
+            sun.misc.Unsafe unsafe = (sun.misc.Unsafe) theUnsafeField.get(null);
+            long offset = unsafe.objectFieldOffset(field);
+            unsafe.putInt(obj, offset, val);
+        } catch (Throwable t) {
+            t.printStackTrace();
+        }
+    }
+
+    private static synchronized void initializeVanillaTabs() {
+        try {
+            int count = 0;
+            for (net.minecraft.world.item.CreativeModeTab tab : net.minecraft.core.registries.BuiltInRegistries.CREATIVE_MODE_TAB) {
+                if (count < 14) {
+                    if (VANILLA_TABS.add(tab)) {
+                        System.out.println("[ChainLoader DEBUG] Registered vanilla tab #" + count + ": " + tab);
+                    }
+                } else {
+                    if (!MODDED_TAB_INDICES.containsKey(tab)) {
+                        int moddedIdx = nextModdedIndex;
+                        MODDED_TAB_INDICES.put(tab, moddedIdx);
+                        nextModdedIndex++;
+
+                        // Calculate new row and col
+                        int idxOnPage = moddedIdx % 12;
+                        net.minecraft.world.item.CreativeModeTab.Row newRow = (idxOnPage < 6) 
+                            ? net.minecraft.world.item.CreativeModeTab.Row.TOP 
+                            : net.minecraft.world.item.CreativeModeTab.Row.BOTTOM;
+                        int newCol = (idxOnPage < 6) ? idxOnPage : (idxOnPage - 6);
+
+                        System.out.println("[ChainLoader DEBUG] Detected and patching fields of modded tab " + tab + " to row=" + newRow + ", col=" + newCol);
+                        patchTabFields(tab, newRow, newCol);
+                    }
+                }
+                count++;
+            }
+        } catch (Throwable t) {
+            t.printStackTrace();
+        }
+    }
+
+    private static boolean isVanillaTab(net.minecraft.world.item.CreativeModeTab tab) {
+        initializeVanillaTabs();
+        return VANILLA_TABS.contains(tab);
+    }
+
+    private static int getModdedTabIndex(net.minecraft.world.item.CreativeModeTab tab) {
+        initializeVanillaTabs();
+        synchronized (MODDED_TAB_INDICES) {
+            return MODDED_TAB_INDICES.computeIfAbsent(tab, t -> {
+                int val = nextModdedIndex;
+                nextModdedIndex++;
+                return val;
+            });
+        }
+    }
+
     private static java.util.List<net.minecraft.world.item.CreativeModeTab> getCachedAllTabs() {
+        initializeVanillaTabs();
         java.util.List<net.minecraft.world.item.CreativeModeTab> allTabs = new java.util.ArrayList<>();
         for (net.minecraft.world.item.CreativeModeTab tab : net.minecraft.core.registries.BuiltInRegistries.CREATIVE_MODE_TAB) {
             allTabs.add(tab);
@@ -2102,12 +2245,22 @@ public class EventBridgeHelper {
 
     public static Object getCreativeTabRow(Object tabObj) {
         net.minecraft.world.item.CreativeModeTab tab = (net.minecraft.world.item.CreativeModeTab) tabObj;
-        java.util.List<net.minecraft.world.item.CreativeModeTab> all = getCachedAllTabs();
-        int idx = all.indexOf(tab);
-        if (idx == -1 || idx < 14) {
-            return tab.g();
+        if (isVanillaTab(tab)) {
+            try {
+                java.lang.reflect.Field rowField;
+                try {
+                    rowField = tab.getClass().getDeclaredField("g");
+                } catch (NoSuchFieldException e) {
+                    rowField = tab.getClass().getDeclaredField("row");
+                }
+                rowField.setAccessible(true);
+                return rowField.get(tab);
+            } catch (Throwable t) {
+                t.printStackTrace();
+            }
+            return net.minecraft.world.item.CreativeModeTab.Row.TOP;
         }
-        int moddedIdx = idx - 14;
+        int moddedIdx = getModdedTabIndex(tab);
         int idxOnPage = moddedIdx % 12;
         if (idxOnPage < 6) {
             return net.minecraft.world.item.CreativeModeTab.Row.TOP;
@@ -2118,12 +2271,26 @@ public class EventBridgeHelper {
 
     public static int getCreativeTabColumn(Object tabObj) {
         net.minecraft.world.item.CreativeModeTab tab = (net.minecraft.world.item.CreativeModeTab) tabObj;
-        java.util.List<net.minecraft.world.item.CreativeModeTab> all = getCachedAllTabs();
-        int idx = all.indexOf(tab);
-        if (idx == -1 || idx < 14) {
-            return tab.f();
+        if (isVanillaTab(tab)) {
+            try {
+                java.lang.reflect.Field colField;
+                try {
+                    colField = tab.getClass().getDeclaredField("h");
+                } catch (NoSuchFieldException e) {
+                    colField = tab.getClass().getDeclaredField("column");
+                }
+                colField.setAccessible(true);
+                int col = (int) colField.get(tab);
+                if (col < 0 || col > 6) {
+                    return 0;
+                }
+                return col;
+            } catch (Throwable t) {
+                t.printStackTrace();
+            }
+            return 0;
         }
-        int moddedIdx = idx - 14;
+        int moddedIdx = getModdedTabIndex(tab);
         int idxOnPage = moddedIdx % 12;
         if (idxOnPage < 6) {
             return idxOnPage;
@@ -2142,12 +2309,13 @@ public class EventBridgeHelper {
 
         int totalPages = getTotalCreativePages();
         if (totalPages > 1) {
-            guiGraphics.drawString(screen.getMinecraft().font, "<", left + 75, top - 40, currentPage > 0 ? 0xFFFFFFFF : 0xFF808080);
+            net.minecraft.client.gui.Font font = net.minecraft.client.Minecraft.getInstance().font;
+            guiGraphics.drawString(font, "<", left + 75, top - 40, currentPage > 0 ? 0xFFFFFFFF : 0xFF808080);
             
             String pageStr = (currentPage + 1) + "/" + totalPages;
-            guiGraphics.drawString(screen.getMinecraft().font, pageStr, left + 90, top - 40, 0xFFFFFFFF);
+            guiGraphics.drawString(font, pageStr, left + 90, top - 40, 0xFFFFFFFF);
             
-            guiGraphics.drawString(screen.getMinecraft().font, ">", left + 120, top - 40, currentPage < totalPages - 1 ? 0xFFFFFFFF : 0xFF808080);
+            guiGraphics.drawString(font, ">", left + 120, top - 40, currentPage < totalPages - 1 ? 0xFFFFFFFF : 0xFF808080);
         }
     }
 
@@ -2184,35 +2352,31 @@ public class EventBridgeHelper {
         try {
             Class<?> screenClass = screenObj.getClass();
             java.lang.reflect.Field selectedTabField = null;
-            try {
-                selectedTabField = screenClass.getDeclaredField("T");
-            } catch (NoSuchFieldException e) {
-                selectedTabField = screenClass.getDeclaredField("selectedTab");
-            }
-            selectedTabField.setAccessible(true);
-            
-            java.util.List<net.minecraft.world.item.CreativeModeTab> visibleTabs = getCreativeModeTabs();
-            if (!visibleTabs.isEmpty()) {
-                selectedTabField.set(screenObj, visibleTabs.get(0));
-                
-                java.lang.reflect.Method setSelectedTabMethod = null;
-                for (java.lang.reflect.Method m : screenClass.getDeclaredMethods()) {
-                    if (m.getParameterCount() == 1 && m.getParameterTypes()[0].getName().equals("cta")) {
-                        setSelectedTabMethod = m;
-                        break;
-                    }
+            for (java.lang.reflect.Field f : screenClass.getDeclaredFields()) {
+                if (f.getType().isAssignableFrom(net.minecraft.world.item.CreativeModeTab.class)) {
+                    selectedTabField = f;
+                    break;
                 }
-                if (setSelectedTabMethod == null) {
+            }
+            
+            if (selectedTabField != null) {
+                selectedTabField.setAccessible(true);
+                
+                java.util.List<net.minecraft.world.item.CreativeModeTab> visibleTabs = getCreativeModeTabs();
+                if (!visibleTabs.isEmpty()) {
+                    selectedTabField.set(screenObj, visibleTabs.get(0));
+                    
+                    java.lang.reflect.Method setSelectedTabMethod = null;
                     for (java.lang.reflect.Method m : screenClass.getDeclaredMethods()) {
-                        if (m.getParameterCount() == 1 && m.getParameterTypes()[0].getSimpleName().equals("CreativeModeTab")) {
+                        if (m.getParameterCount() == 1 && m.getParameterTypes()[0] == net.minecraft.world.item.CreativeModeTab.class && m.getReturnType() == void.class) {
                             setSelectedTabMethod = m;
                             break;
                         }
                     }
-                }
-                if (setSelectedTabMethod != null) {
-                    setSelectedTabMethod.setAccessible(true);
-                    setSelectedTabMethod.invoke(screenObj, visibleTabs.get(0));
+                    if (setSelectedTabMethod != null) {
+                        setSelectedTabMethod.setAccessible(true);
+                        setSelectedTabMethod.invoke(screenObj, visibleTabs.get(0));
+                    }
                 }
             }
         } catch (Throwable t) {

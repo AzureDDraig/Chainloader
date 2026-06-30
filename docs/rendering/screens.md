@@ -158,8 +158,48 @@ Minecraft 1.21.1 expects a static set of 14 creative tabs arranged in a fixed la
 To support paginated creative tabs for mods, ChainLoader implements a dynamic layout overrides and pagination system:
 1. **Redirecting CreativeModeTabs.tabs()**: Overwrites the static `tabs()` method inside `CreativeModeTabs` (`ctb`) to call `EventBridgeHelper.getCreativeModeTabs()`. This returns only the tabs visible on the active page (Page 0 contains vanilla tabs; Page 1+ contains modded tabs, with 12 tabs per page).
 2. **Tab Row/Column Overrides**: Intercepts `getRow()` (`g()`) and `getColumn()` (`f()`) inside `CreativeModeTab` (`cta`) to invoke `EventBridgeHelper.getCreativeTabRow(tab)` and `EventBridgeHelper.getCreativeTabColumn(tab)` dynamically. Modded tabs are placed on columns `0` to `5` on `TOP`/`BOTTOM` rows matching their relative index on the current page.
-3. **Screen Rendering & Click Hooks**:
+3. **Bypassing Position Validation**: Bypasses the vanilla duplicate position check inside `CreativeModeTabs.validate()` (`a()`) by making it a no-op method. This prevents `IllegalArgumentException: Duplicate position` crashes when bootstrap registers modded tabs that share layout positions on secondary pages.
+4. **Dynamic Field Resolution**: Resolves obfuscated `"row"` and `"column"` field names dynamically using `BytecodeTransformer.mapFieldName` instead of hardcoding target names. This guarantees compatibility across older loader versions (e.g., 1.20.1/1.19.3) where mappings differ.
+5. **Screen Rendering & Click Hooks**:
    - Injects rendering code at the end of `CreativeModeInventoryScreen.render()` to call `EventBridgeHelper.onCreativeScreenRender()` to draw previous, page number, and next page controls (`< Page X/Y >`) above the GUI.
    - Injects a mouse click interceptor at the start of `CreativeModeInventoryScreen.mouseClicked()` to process page navigation buttons, decrement/increment the page counter, and invoke `updateActiveTab()` to refresh the screen layout.
 
+---
 
+## 8. Idempotency in Bytecode Transformations
+
+Because multiple compatibility modules (e.g., Forge, Fabric, NeoForge) can run concurrently in multi-loader configurations, classloader transformation pipelines may execute multiple times. If class transformation actions blindly inject new methods (such as `appendHoverText_legacy` or `use_legacy`), duplicate method definitions will be written to the class file, resulting in runtime `java.lang.ClassFormatError: Duplicate method name`.
+
+To ensure safe multi-pass transformations, ChainLoader enforces idempotency:
+1. **TRANSFORMED_CLASSES Tracker**: Uses a static `ThreadLocal<Set<String>>` inside `Chainlink1_21_1_Base` to keep track of class names processed by the compat layer during a classloading definition.
+2. **Short-Circuit**: If the class name is already present in the set, the transformation immediately returns the input bytes without executing another visitor pass, avoiding duplicate injection.
+
+## 9. Event Listener Method Signature Adaptation
+
+Across Minecraft versions, Fabric and Forge APIs may rename functional interface methods. For example, in Fabric API 1.20.1, the functional interface `ItemGroupEvents$ModifyEntries` had the method named `modifyEntries(FabricItemGroupEntries)`, which was renamed to `modify(FabricItemGroupEntries)` in Minecraft 1.21.1.
+
+When legacy mods compiled against 1.20.1 run on a 1.21.1 environment, their `invokedynamic` instructions request `LambdaMetafactory` to compile the method references targeting `"modifyEntries"`. Consequently, the generated lambda class implements `modifyEntries` but leaves the interface's actual `modify` method abstract, causing `java.lang.AbstractMethodError` when invoked by the event system.
+
+To transparently bridge versioned event listener interfaces:
+1. **Dynamic Fallback in Event Invoker**: The `Event` class intercepts `AbstractMethodError` and `NoSuchMethodError` during listener invocation.
+2. **Method Name Matching**: If an error is caught, the invoker checks all declared methods on the listener class. It matches names dynamically (e.g., mapping a call to `modify` to an implemented `modifyEntries` method and vice versa).
+3. **Argument Adaptation & Execution**: Reflectively adapts parameters and successfully invokes the correct method, resolving compile-time version changes without requiring mod recompilation.
+
+---
+
+## 10. Removing final from Screen.init
+
+In Minecraft 1.21.1, the screen initialization method `init(Minecraft client, int width, int height)` (obfuscated as `b(Lfgo;II)V` inside class `fod`) was declared as `final` because modern screens are expected to override `init()` instead.
+
+However, legacy mods compiled for 1.19.x or 1.20.x often override `init(Minecraft, int, int)` directly to initialize fields, add widgets, or setup local states. When these legacy screen classes (like Mekanism's `GuiMekanism`) are loaded, the JVM throws `java.lang.IncompatibleClassChangeError: class overrides final method` and crashes the mod.
+
+To resolve this incompatibility, ChainLoader's `transformScreen` dynamically strips the `ACC_FINAL` access modifier from `b(Lfgo;II)V` during load-time:
+
+```java
+// Chainlink1_21_1_Base.java - transformScreen
+if ("b".equals(name) && "(Lfgo;II)V".equals(descriptor)) {
+    access = access & ~Opcodes.ACC_FINAL;
+}
+```
+
+This safely allows legacy classes overriding `init(Minecraft, int, int)` to load and execute without JVM-level verification errors.

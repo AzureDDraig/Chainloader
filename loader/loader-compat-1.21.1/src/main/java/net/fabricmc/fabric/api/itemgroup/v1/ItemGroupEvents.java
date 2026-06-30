@@ -17,8 +17,16 @@ public final class ItemGroupEvents {
         return EVENTS.computeIfAbsent(tabKey, k -> new Event<>(ModifyEntries.class));
     }
 
+    public static Event<ModifyEntries> modifyEntriesEvent(net.minecraft.resources.ResourceLocation tabId) {
+        if (tabId == null) {
+            throw new IllegalArgumentException("tabId cannot be null");
+        }
+        ResourceKey<CreativeModeTab> tabKey = ResourceKey.create(net.minecraft.core.registries.Registries.CREATIVE_MODE_TAB, tabId);
+        return modifyEntriesEvent(tabKey);
+    }
+
     @FunctionalInterface
     public interface ModifyEntries {
-        void modify(FabricItemGroupEntries entries);
+        void modifyEntries(FabricItemGroupEntries entries);
     }
 }

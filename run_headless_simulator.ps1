@@ -211,6 +211,6 @@ Write-Host "  LAUNCHING HEADLESS SIMULATION (JAVA 21)" -ForegroundColor Magenta
 Write-Host "==================================================" -ForegroundColor Cyan
 
 $runCp = "bin;bin-stubs;lib/*"
-& $javaPath -cp "$runCp" net.chainloader.loader.core.HeadlessSimulator
+& $javaPath "-Dchainloader.debug=true" -cp "$runCp" net.chainloader.loader.core.HeadlessSimulator
 
 Write-Host "Simulation Run Ended with Exit Code: $LASTEXITCODE" -ForegroundColor Green

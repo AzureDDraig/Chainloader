@@ -130,13 +130,13 @@ public class FabricApiPortTest {
         net.fabricmc.fabric.api.itemgroup.v1.FabricItemGroupEntriesWrapper wrapper = 
             new net.fabricmc.fabric.api.itemgroup.v1.FabricItemGroupEntriesWrapper(mockOutput);
 
-        net.fabricmc.fabric.api.itemgroup.v1.ItemGroupEvents.modifyEntriesEvent(tabKey1).invoker().modify(wrapper);
+        net.fabricmc.fabric.api.itemgroup.v1.ItemGroupEvents.modifyEntriesEvent(tabKey1).invoker().modifyEntries(wrapper);
 
         assertEquals(1, fireCount1.get());
         assertEquals(0, fireCount2.get());
 
         // Fire tab2
-        net.fabricmc.fabric.api.itemgroup.v1.ItemGroupEvents.modifyEntriesEvent(tabKey2).invoker().modify(wrapper);
+        net.fabricmc.fabric.api.itemgroup.v1.ItemGroupEvents.modifyEntriesEvent(tabKey2).invoker().modifyEntries(wrapper);
 
         assertEquals(1, fireCount1.get());
         assertEquals(1, fireCount2.get());

@@ -1,6 +1,6 @@
 package net.neoforged.neoforge.common;
 
-public class ModConfigSpec {
+public class ModConfigSpec implements net.neoforged.fml.config.IConfigSpec {
     public static class ConfigValue<T> {
         private final T defaultValue;
         public ConfigValue(T defaultValue) {

@@ -33,6 +33,24 @@ public class ScreenEvent extends Event {
         }
     }
 
+    public static class InitScreenEvent extends ScreenEvent {
+        public InitScreenEvent(Screen screen) {
+            super(screen);
+        }
+
+        public static class Pre extends InitScreenEvent {
+            public Pre(Screen screen) {
+                super(screen);
+            }
+        }
+
+        public static class Post extends InitScreenEvent {
+            public Post(Screen screen) {
+                super(screen);
+            }
+        }
+    }
+
     public static class Render extends ScreenEvent {
         private final GuiGraphics guiGraphics;
         private final com.mojang.blaze3d.vertex.PoseStack poseStack;

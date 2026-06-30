@@ -623,6 +623,8 @@ public abstract class Chainlink1_21_1_Base implements Chainlink {
         return false;
     }
 
+    private static final ThreadLocal<java.util.Set<String>> TRANSFORMED_CLASSES = ThreadLocal.withInitial(java.util.HashSet::new);
+
     // ============================================================
     // Bytecode transform delegators & implementation
     // ============================================================
@@ -631,95 +633,103 @@ public abstract class Chainlink1_21_1_Base implements Chainlink {
             return bytes;
         }
 
+        java.util.Set<String> transformedSet = TRANSFORMED_CLASSES.get();
+        if (transformedSet.contains(className)) {
+            return bytes;
+        }
+        transformedSet.add(className);
+
         // 1. Game class transformations
-        if ("fgo".equals(className)) {
+        if (isClass(className, "net.minecraft.client.Minecraft", "fgo")) {
             return transformMinecraft(bytes);
-        } else if ("fof".equals(className)) {
+        } else if (isClass(className, "net.minecraft.client.gui.screens.TitleScreen", "fof")) {
             return transformTitleScreen(bytes);
-        } else if ("fod".equals(className)) {
+        } else if (isClass(className, "net.minecraft.client.gui.screens.Screen", "fod")) {
             return transformScreen(bytes);
-        } else if ("fot".equals(className)) {
+        } else if (isClass(className, "net.minecraft.client.gui.screens.inventory.AbstractContainerScreen", "fot")) {
             return transformAbstractContainerScreen(bytes);
-        } else if ("geb".equals(className)) {
+        } else if (isClass(className, "net.minecraft.client.player.LocalPlayer", "geb")) {
             return transformLocalPlayer(bytes);
-        } else if ("aur".equals(className)) {
+        } else if (isClass(className, "net.minecraft.server.players.PlayerList", "aur")) {
             return transformPlayerList(bytes);
-        } else if ("frh".equals(className)) {
+        } else if (isClass(className, "net.minecraft.client.gui.screens.options.OptionsSubScreen", "frh")) {
             return transformOptionsSubScreen(bytes);
-        } else if ("fny".equals(className)) {
+        } else if (isClass(className, "net.minecraft.client.gui.screens.PauseScreen", "fny")) {
             return transformPauseScreen(bytes);
         } else if ("net.minecraft.client.ClientBrandRetriever".equals(className)) {
             return transformClientBrandRetriever(bytes);
         } else if (isClass(className, "net.minecraft.world.item.crafting.RecipeManager", "czd")) {
             return transformRecipeManager(bytes);
-        } else if ("fik".equals(className)) {
+        } else if (isClass(className, "net.minecraft.client.gui.components.AbstractWidget", "fik")) {
             return transformAbstractWidget(bytes);
-        } else if ("fio".equals(className)) {
+        } else if (isClass(className, "net.minecraft.client.gui.components.Checkbox", "fio")) {
             return transformCheckbox(bytes);
-        } else if ("fgs".equals(className)) {
+        } else if (isClass(className, "net.minecraft.client.Options", "fgs")) {
             return transformOptions(bytes);
-        } else if ("akr".equals(className)) {
+        } else if (isClass(className, "net.minecraft.resources.ResourceLocation", "akr")) {
             return transformResourceLocation(bytes);
-        } else if ("dqj$a".equals(className)) {
+        } else if (isClass(className, "net.minecraft.world.level.block.entity.BlockEntityType$BlockEntitySupplier", "dqj$a")) {
             return transformBlockEntityTypeSupplier(bytes);
-        } else if ("crc".equals(className)) {
+        } else if (isClass(className, "net.minecraft.world.inventory.MenuType", "crc")) {
             return transformMenuType(bytes);
-        } else if ("crc$a".equals(className)) {
+        } else if (isClass(className, "net.minecraft.world.inventory.MenuType$MenuSupplier", "crc$a")) {
             return transformMenuSupplier(bytes);
-        } else if ("cew".equals(className)) {
+        } else if (isClass(className, "net.minecraft.world.entity.ai.village.poi.PoiTypes", "cew")) {
             return transformPoiTypes(bytes);
         } else if ("net.blay09.mods.balm.mixin.PoiTypesAccessor".equals(className)) {
             return transformPoiTypesAccessor(bytes);
-        } else if ("lt".equals(className)) {
+        } else if (isClass(className, "net.minecraft.core.registries.BuiltInRegistries", "lt")) {
             return transformBuiltInRegistries(bytes);
-        } else if ("cta".equals(className) || "net.minecraft.world.item.CreativeModeTab".equals(className)) {
-            return transformCreativeModeTab(bytes);
-        } else if ("ctb".equals(className) || "net.minecraft.world.item.CreativeModeTabs".equals(className)) {
+        } else if (isClass(className, "net.minecraft.world.item.CreativeModeTab", "cta")) {
+            byte[] transformed = transformCreativeModeTab(bytes);
+            return applyModRedirections(className, transformed);
+        } else if (isClass(className, "net.minecraft.world.item.CreativeModeTabs", "ctb")) {
             return transformCreativeModeTabs(bytes);
-        } else if ("fpi".equals(className) || "net.minecraft.client.gui.screens.inventory.CreativeModeInventoryScreen".equals(className)) {
+        } else if (isClass(className, "net.minecraft.client.gui.screens.inventory.CreativeModeInventoryScreen", "fpi")) {
             return transformCreativeModeInventoryScreen(bytes);
-        } else if ("fhy".equals(className)) {
+        } else if (isClass(className, "net.minecraft.client.gui.Gui", "fhy")) {
             return transformGui(bytes);
-        } else if ("cuq".equals(className)) {
+        } else if (isClass(className, "net.minecraft.world.item.ItemStack", "cuq")) {
             return transformItemStack(bytes);
-        } else if ("cul".equals(className)) {
+        } else if (isClass(className, "net.minecraft.world.item.Item", "cul")) {
             return transformItemClass(bytes);
-        } else if ("dtb".equals(className)) {
+        } else if (isClass(className, "net.minecraft.world.level.block.state.BlockBehaviour", "dtb")) {
             return transformBlockBehaviourClass(bytes);
-        } else if ("dfy".equals(className)) {
+        } else if (isClass(className, "net.minecraft.world.level.block.Block", "dfy")) {
             return transformBlockClass(bytes);
-        } else if ("atp".equals(className)) {
+        } else if (isClass(className, "net.minecraft.server.packs.repository.PackRepository", "atp")) {
             return transformPackRepository(bytes);
         } else if ("net.minecraft.server.MinecraftServer".equals(className)) {
             return transformMinecraftServer(bytes);
-        } else if ("aqu".equals(className)) {
+        } else if (isClass(className, "net.minecraft.server.level.ServerLevel", "aqu")) {
             return transformServerLevel(bytes);
         } else if ("net.blay09.mods.balm.fabric.client.rendering.FabricBalmModels".equals(className)) {
             return transformFabricBalmModels(bytes);
-        } else if ("ghb".equals(className)) {
+        } else if (isClass(className, "net.minecraft.client.renderer.blockentity.BlockEntityRenderers", "ghb")) {
             return transformBlockEntityRenderers(bytes);
-        } else if ("fyg".equals(className)) {
+        } else if (isClass(className, "net.minecraft.client.resources.model.EntityModelSet", "fyg")) {
             return transformEntityModelSet(bytes);
-        } else if ("gkk".equals(className)) {
+        } else if (isClass(className, "net.minecraft.client.renderer.entity.EntityRenderers", "gkk")) {
             return transformEntityRenderers(bytes);
-        } else if ("geu".equals(className)) {
+        } else if (isClass(className, "net.minecraft.client.renderer.ItemBlockRenderTypes", "geu")) {
             return transformItemBlockRenderTypes(bytes);
-        } else if ("grg".equals(className)) {
+        } else if (isClass(className, "net.minecraft.client.resources.IndexedAssetSource", "grg")) {
             return transformIndexedAssetSource(bytes);
-        } else if ("fzc".equals(className)) {
+        } else if (isClass(className, "net.minecraft.client.multiplayer.ClientCommonPacketListenerImpl", "fzc")) {
             return transformClientCommonPacketListenerImpl(bytes);
-        } else if ("arr".equals(className)) {
+        } else if (isClass(className, "net.minecraft.server.network.ServerCommonPacketListenerImpl", "arr")) {
             return transformServerCommonPacketListenerImpl(bytes);
-        } else if ("fwg".equals(className)) {
+        } else if (isClass(className, "net.minecraft.client.model.Model", "fwg")) {
             return transformModel(bytes);
-        } else if ("fyk".equals(className)) {
+        } else if (isClass(className, "net.minecraft.client.model.geom.ModelPart", "fyk")) {
             return transformModelPart(bytes);
-        } else if ("fih".equals(className) || "fji".equals(className)) {
+        } else if (isClass(className, "net.minecraft.client.gui.components.AbstractSelectionList", "fih") ||
+                   isClass(className, "net.minecraft.client.gui.components.ContainerObjectSelectionList", "fji")) {
             return transformSelectionList(className, bytes);
         }
 
         // 2. Mod class redirections (only transform classes that are not in minecraft packages, except CreativeModeTab)
-        boolean isCreativeModeTab = "cta".equals(className) || "net.minecraft.world.item.CreativeModeTab".equals(className);
+        boolean isCreativeModeTab = isClass(className, "net.minecraft.world.item.CreativeModeTab", "cta");
         if (isCreativeModeTab || (!className.startsWith("net.minecraft.") && !className.startsWith("com.mojang.") && !className.startsWith("net.chainloader.loader.compat.") && className.indexOf('.') != -1)) {
             return applyModRedirections(className, bytes);
         }
@@ -1282,45 +1292,53 @@ public abstract class Chainlink1_21_1_Base implements Chainlink {
             ClassVisitor cv = new ClassVisitor(Opcodes.ASM9, cw) {
                 @Override
                 public MethodVisitor visitMethod(int access, String name, String descriptor, String signature, String[] exceptions) {
-                    MethodVisitor mv = super.visitMethod(access, name, descriptor, signature, exceptions);
-                    if ("g".equals(name) && ("()Lcta$f;".equals(descriptor) || "()Lnet/minecraft/world/item/CreativeModeTab$Row;".equals(descriptor))) {
-                        System.out.println("[Chainlink 1.21.1 DEBUG] Injecting custom getRow implementation into CreativeModeTab");
-                        return new MethodVisitor(Opcodes.ASM9, null) {
+                    final MethodVisitor originalMv = super.visitMethod(access, name, descriptor, signature, exceptions);
+                    boolean isRowMethod = "g".equals(name) || "row".equals(name) || "getRow".equals(name) || "method_47306".equals(name);
+                    boolean isRowDesc = "()Lcta$f;".equals(descriptor) || "()Lnet/minecraft/world/item/CreativeModeTab$Row;".equals(descriptor);
+                    if (isRowMethod && isRowDesc) {
+                        System.out.println("[Chainlink 1.21.1 DEBUG] Injecting custom getRow implementation into CreativeModeTab (method=" + name + ")");
+                        final String finalDesc = descriptor;
+                        return new MethodVisitor(Opcodes.ASM9, originalMv) {
                             @Override
                             public void visitCode() {
-                                mv.visitCode();
-                                mv.visitVarInsn(Opcodes.ALOAD, 0);
-                                mv.visitMethodInsn(Opcodes.INVOKESTATIC, 
+                                originalMv.visitCode();
+                                originalMv.visitVarInsn(Opcodes.ALOAD, 0);
+                                originalMv.visitMethodInsn(Opcodes.INVOKESTATIC, 
                                     "net/chainloader/loader/compat/bridge/EventBridgeHelper", 
                                     "getCreativeTabRow", 
                                     "(Ljava/lang/Object;)Ljava/lang/Object;", 
                                     false);
-                                mv.visitTypeInsn(Opcodes.CHECKCAST, "net/minecraft/world/item/CreativeModeTab$Row");
-                                mv.visitInsn(Opcodes.ARETURN);
-                                mv.visitMaxs(1, 1);
-                                mv.visitEnd();
+                                String rowType = "net/minecraft/world/item/CreativeModeTab$Row";
+                                if (finalDesc.contains("cta$f")) {
+                                    rowType = "cta$f";
+                                }
+                                originalMv.visitTypeInsn(Opcodes.CHECKCAST, rowType);
+                                originalMv.visitInsn(Opcodes.ARETURN);
+                                originalMv.visitMaxs(1, 1);
+                                originalMv.visitEnd();
                             }
                         };
                     }
-                    if ("f".equals(name) && "()I".equals(descriptor)) {
-                        System.out.println("[Chainlink 1.21.1 DEBUG] Injecting custom getColumn implementation into CreativeModeTab");
-                        return new MethodVisitor(Opcodes.ASM9, null) {
+                    boolean isColMethod = "f".equals(name) || "column".equals(name) || "getColumn".equals(name) || "method_47305".equals(name);
+                    if (isColMethod && "()I".equals(descriptor)) {
+                        System.out.println("[Chainlink 1.21.1 DEBUG] Injecting custom getColumn implementation into CreativeModeTab (method=" + name + ")");
+                        return new MethodVisitor(Opcodes.ASM9, originalMv) {
                             @Override
                             public void visitCode() {
-                                mv.visitCode();
-                                mv.visitVarInsn(Opcodes.ALOAD, 0);
-                                mv.visitMethodInsn(Opcodes.INVOKESTATIC, 
+                                originalMv.visitCode();
+                                originalMv.visitVarInsn(Opcodes.ALOAD, 0);
+                                originalMv.visitMethodInsn(Opcodes.INVOKESTATIC, 
                                     "net/chainloader/loader/compat/bridge/EventBridgeHelper", 
                                     "getCreativeTabColumn", 
                                     "(Ljava/lang/Object;)I", 
                                     false);
-                                mv.visitInsn(Opcodes.IRETURN);
-                                mv.visitMaxs(1, 1);
-                                mv.visitEnd();
+                                originalMv.visitInsn(Opcodes.IRETURN);
+                                originalMv.visitMaxs(1, 1);
+                                originalMv.visitEnd();
                             }
                         };
                     }
-                    return mv;
+                    return originalMv;
                 }
             };
             cr.accept(cv, 0);
@@ -1338,25 +1356,39 @@ public abstract class Chainlink1_21_1_Base implements Chainlink {
             ClassVisitor cv = new ClassVisitor(Opcodes.ASM9, cw) {
                 @Override
                 public MethodVisitor visitMethod(int access, String name, String descriptor, String signature, String[] exceptions) {
-                    MethodVisitor mv = super.visitMethod(access, name, descriptor, signature, exceptions);
-                    if ("c".equals(name) && "()Ljava/util/List;".equals(descriptor)) {
-                        System.out.println("[Chainlink 1.21.1 DEBUG] Injecting custom tabs() implementation into CreativeModeTabs");
-                        return new MethodVisitor(Opcodes.ASM9, null) {
+                    final MethodVisitor originalMv = super.visitMethod(access, name, descriptor, signature, exceptions);
+                    boolean isTabsMethod = "c".equals(name) || "tabs".equals(name) || "method_47395".equals(name);
+                    if (isTabsMethod && "()Ljava/util/List;".equals(descriptor)) {
+                        System.out.println("[Chainlink 1.21.1 DEBUG] Injecting custom tabs() implementation into CreativeModeTabs (method=" + name + ")");
+                        return new MethodVisitor(Opcodes.ASM9, originalMv) {
                             @Override
                             public void visitCode() {
-                                mv.visitCode();
-                                mv.visitMethodInsn(Opcodes.INVOKESTATIC, 
+                                originalMv.visitCode();
+                                originalMv.visitMethodInsn(Opcodes.INVOKESTATIC, 
                                     "net/chainloader/loader/compat/bridge/EventBridgeHelper", 
                                     "getCreativeModeTabs", 
                                     "()Ljava/util/List;", 
                                     false);
-                                mv.visitInsn(Opcodes.ARETURN);
-                                mv.visitMaxs(1, 0);
-                                mv.visitEnd();
+                                originalMv.visitInsn(Opcodes.ARETURN);
+                                originalMv.visitMaxs(1, 0);
+                                originalMv.visitEnd();
                             }
                         };
                     }
-                    return mv;
+                    boolean isValidateMethod = "a".equals(name) || "validate".equals(name) || "method_47394".equals(name);
+                    if (isValidateMethod && "()V".equals(descriptor)) {
+                        System.out.println("[Chainlink 1.21.1 DEBUG] Making CreativeModeTabs.validate a no-op to allow modded tabs pagination");
+                        return new MethodVisitor(Opcodes.ASM9, originalMv) {
+                            @Override
+                            public void visitCode() {
+                                originalMv.visitCode();
+                                originalMv.visitInsn(Opcodes.RETURN);
+                                originalMv.visitMaxs(0, 0);
+                                originalMv.visitEnd();
+                            }
+                        };
+                    }
+                    return originalMv;
                 }
             };
             cr.accept(cv, 0);
@@ -1375,8 +1407,10 @@ public abstract class Chainlink1_21_1_Base implements Chainlink {
                 @Override
                 public MethodVisitor visitMethod(int access, String name, String descriptor, String signature, String[] exceptions) {
                     MethodVisitor mv = super.visitMethod(access, name, descriptor, signature, exceptions);
-                    if ("a".equals(name) && "(Lfhz;IIF)V".equals(descriptor)) {
-                        System.out.println("[Chainlink 1.21.1 DEBUG] Injecting render hook into CreativeModeInventoryScreen");
+                    boolean isRenderMethod = "a".equals(name) || "render".equals(name) || "method_25394".equals(name);
+                    boolean isRenderDesc = descriptor != null && descriptor.startsWith("(L") && descriptor.endsWith(";IIF)V");
+                    if (isRenderMethod && isRenderDesc) {
+                        System.out.println("[Chainlink 1.21.1 DEBUG] Injecting render hook into CreativeModeInventoryScreen (method=" + name + ")");
                         return new MethodVisitor(Opcodes.ASM9, mv) {
                             @Override
                             public void visitInsn(int opcode) {
@@ -1395,8 +1429,9 @@ public abstract class Chainlink1_21_1_Base implements Chainlink {
                             }
                         };
                     }
-                    if ("a".equals(name) && "(DDI)Z".equals(descriptor)) {
-                        System.out.println("[Chainlink 1.21.1 DEBUG] Injecting mouseClicked hook into CreativeModeInventoryScreen");
+                    boolean isClickMethod = "a".equals(name) || "mouseClicked".equals(name) || "method_25402".equals(name);
+                    if (isClickMethod && "(DDI)Z".equals(descriptor)) {
+                        System.out.println("[Chainlink 1.21.1 DEBUG] Injecting mouseClicked hook into CreativeModeInventoryScreen (method=" + name + ")");
                         return new MethodVisitor(Opcodes.ASM9, mv) {
                             @Override
                             public void visitCode() {
@@ -1438,6 +1473,9 @@ public abstract class Chainlink1_21_1_Base implements Chainlink {
                 public MethodVisitor visitMethod(int access, String name, String descriptor, String signature, String[] exceptions) {
                     if ("c".equals(name) && "(Lfki;)Lfki;".equals(descriptor)) {
                         access = (access & ~Opcodes.ACC_PRIVATE & ~Opcodes.ACC_PROTECTED) | Opcodes.ACC_PUBLIC;
+                    }
+                    if ("b".equals(name) && "(Lfgo;II)V".equals(descriptor)) {
+                        access = access & ~Opcodes.ACC_FINAL;
                     }
                     MethodVisitor mv = super.visitMethod(access, name, descriptor, signature, exceptions);
                     if ("b".equals(name) && "(Lfgo;II)V".equals(descriptor)) {

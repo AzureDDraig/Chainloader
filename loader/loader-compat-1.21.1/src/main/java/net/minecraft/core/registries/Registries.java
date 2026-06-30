@@ -16,4 +16,5 @@ public class Registries {
     public static final ResourceKey<?> ENCHANTMENT = null;
     public static final ResourceKey<?> MOB_EFFECT = null;
     public static final ResourceKey<?> ENTITY_TYPE = null;
+    public static final ResourceKey<?> SOUND_EVENT = null;
 }
